@@ -13,6 +13,7 @@ public static class WebServerInstaller
             {
                 o.Configure(builder.Configuration.GetSection("Kestrel"));
                 o.Limits.MaxRequestBodySize = vault.Value.MaxBlobBytes + 1024 * 1024;
+                o.Limits.MaxConcurrentConnections = 16;
             });
 
         builder.Services.Configure<ForwardedHeadersOptions>(o => { o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedPrefix; });
