@@ -19,8 +19,10 @@ EXPO_PUBLIC_BASE_PATH=/momentum dotnet publish Momentum.csproj /p:PublishProfile
 ```bash
 sudo apt update && sudo apt install -y nginx certbot python3-certbot-nginx
 sudo useradd --system --home-dir /opt/momentum --shell /usr/sbin/nologin momentum
-sudo mkdir -p /opt/momentum/data
-sudo chown -R momentum:momentum /opt/momentum
+# 0700/0750: БД и каталог закрыты от других локальных аккаунтов; сервис с UMask=0077
+# создаёт файлы БД с правами 0600.
+sudo install -d -o momentum -g momentum -m 750 /opt/momentum
+sudo install -d -o momentum -g momentum -m 700 /opt/momentum/data
 ```
 
 ## 3. Отправить пакет и настроить сервис
@@ -49,6 +51,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+UMask=0077
 ReadWritePaths=/opt/momentum/data
 
 [Install]
@@ -75,6 +78,14 @@ server {
     client_max_body_size 9m;
     access_log off;
 
+    # Заголовки безопасности; certbot скопирует этот блок в 443 при выпуске сертификата.
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header Referrer-Policy no-referrer always;
+    add_header X-Content-Type-Options nosniff always;
+    # Клиент собран без инлайн-скриптов: script-src 'self' достаточен;
+    # 'unsafe-inline' в style-src — для инлайн-сброса стилей Expo.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
+
     location = /momentum { return 301 /momentum/; }
     location /momentum/ {
         proxy_pass         http://127.0.0.1:8080/;
@@ -86,6 +97,8 @@ server {
     location / { return 404; }
 }
 ```
+
+Инвариант: Kestrel слушает только 127.0.0.1 (appsettings.json), ForwardedHeaders доверяет заголовкам X-Forwarded-* только с loopback. Не выставляйте Kestrel наружу без nginx — иначе рейт-лимит подделывается через X-Forwarded-For.
 
 ```bash
 sudo ln -s /etc/nginx/sites-available/momentum /etc/nginx/sites-enabled/
