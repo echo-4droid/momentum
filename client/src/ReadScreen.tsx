@@ -23,6 +23,8 @@ function readLinkKey(): LinkKeyState {
   if (hash.length < 2) {
     return { fromHash: false, key: null };
   }
+  // Ключ изъят из URL сразу: дальше его не должно быть в адресе, истории и на экране.
+  window.history.replaceState(null, '', window.location.pathname + window.location.search);
   try {
     return { fromHash: true, key: decodeLinkKey(hash.slice(1)) };
   } catch {
