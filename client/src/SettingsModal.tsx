@@ -5,10 +5,14 @@
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { generatePassphrase } from './crypto';
+import { estimatePhraseEntropy, generatePassphrase } from './crypto';
 import { colors, Segmented, styles as u } from './ui';
 
 export type TransferMode = 'phrase' | 'link';
+
+/** Пороги предупреждения о слабой фразе, бит (≈ длина и состав, не точная энтропия). */
+const WEAK_ENTROPY_BITS = 60;
+const VERY_WEAK_ENTROPY_BITS = 40;
 
 /** Настройки секрета: живут в форме, правятся в модалке, применяются по «Сохранить». */
 export interface Settings {
@@ -74,7 +78,11 @@ export function SettingsModal({
   onSave: (settings: Settings) => void;
 }) {
   const [draft, setDraft] = useState<Settings>(initial);
+  const [ackWeak, setAckWeak] = useState(false);
   const phraseEmpty = draft.mode === 'phrase' && draft.passphrase.trim().length === 0;
+  const phraseBits = draft.mode === 'phrase' ? estimatePhraseEntropy(draft.passphrase) : Infinity;
+  const weakPhrase = draft.mode === 'phrase' && phraseBits < WEAK_ENTROPY_BITS;
+  const canSave = !phraseEmpty && (!weakPhrase || ackWeak);
 
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
@@ -129,18 +137,42 @@ export function SettingsModal({
                 style={[u.field, u.mono]}
                 multiline
                 value={draft.passphrase}
-                onChangeText={(passphrase) => setDraft({ ...draft, passphrase })}
+                onChangeText={(passphrase) => {
+                  setDraft({ ...draft, passphrase });
+                  setAckWeak(false);
+                }}
                 placeholder="Фраза"
                 placeholderTextColor={colors.faint}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
               <View style={s.phraseRow}>
-                <Pressable onPress={() => setDraft({ ...draft, passphrase: generatePassphrase() })} hitSlop={6}>
+                <Pressable
+                  onPress={() => {
+                    setDraft({ ...draft, passphrase: generatePassphrase() });
+                    setAckWeak(false);
+                  }}
+                  hitSlop={6}
+                >
                   <Text style={u.link}>Новая фраза</Text>
                 </Pressable>
                 {phraseEmpty ? <Text style={s.phraseError}>Фраза не может быть пустой.</Text> : null}
+                {!phraseEmpty && weakPhrase ? (
+                  <Text style={s.phraseError}>
+                    {phraseBits < VERY_WEAK_ENTROPY_BITS ? 'Очень слабая' : 'Слабая'} фраза — переберут офлайн.
+                  </Text>
+                ) : null}
               </View>
+              {weakPhrase ? (
+                <Pressable style={s.checkRow} onPress={() => setAckWeak(!ackWeak)}>
+                  <View style={[s.checkbox, ackWeak && s.checkboxOn]}>
+                    {ackWeak ? <Text style={s.checkMark}>✓</Text> : null}
+                  </View>
+                  <Text style={s.checkLabel}>
+                    Использовать слабую фразу на свой риск: при утечке шифротекста его можно перебрать.
+                  </Text>
+                </Pressable>
+              ) : null}
             </>
           ) : null}
 
@@ -149,9 +181,9 @@ export function SettingsModal({
               <Text style={s.cancelText}>Отмена</Text>
             </Pressable>
             <Pressable
-              style={[u.primary, s.saveButton, phraseEmpty && u.primaryDisabled]}
+              style={[u.primary, s.saveButton, !canSave && u.primaryDisabled]}
               onPress={() => onSave(draft)}
-              disabled={phraseEmpty}
+              disabled={!canSave}
             >
               <Text style={u.primaryText}>Сохранить</Text>
             </Pressable>

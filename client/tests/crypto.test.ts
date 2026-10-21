@@ -18,6 +18,7 @@ import {
   CryptoError,
   decrypt,
   encrypt,
+  estimatePhraseEntropy,
   generateLinkKey,
   generatePassphrase,
   MAX_TEXT_CHARS,
@@ -39,6 +40,29 @@ describe('generatePassphrase', () => {
     const words = generatePassphrase().split('-');
     assert.equal(words.length, 8);
     assert.ok(words.every((w) => EFF_LARGE_WORDLIST.includes(w)));
+  });
+});
+
+describe('estimatePhraseEntropy', () => {
+  it('порождающая фраза ≈ 103 бита', () => {
+    const bits = estimatePhraseEntropy(generatePassphrase());
+    assert.ok(bits > 100 && bits < 106, `получено ${bits}`);
+  });
+
+  it('один символ — очень слабо', () => {
+    assert.ok(estimatePhraseEntropy('a') < 40);
+    assert.equal(estimatePhraseEntropy(''), 0);
+  });
+
+  it('словарные слова вне разделителей считаются по словам', () => {
+    // 3 слова × 12.9 бита: гораздо меньше, чем длина × классы символов
+    const words = EFF_LARGE_WORDLIST.slice(0, 3).join(' ');
+    assert.ok(Math.abs(estimatePhraseEntropy(words) - 3 * Math.log2(7776)) < 0.01);
+  });
+
+  it('мусорная фраза без слов оценивается по классам символов', () => {
+    // 20 символов нижнего регистра: 20 × log2(26) ≈ 94 бита
+    assert.ok(Math.abs(estimatePhraseEntropy('qzmfrkwpultxjnvbhyga') - 20 * Math.log2(26)) < 0.01);
   });
 });
 
