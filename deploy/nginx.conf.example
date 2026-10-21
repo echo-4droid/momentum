@@ -1,0 +1,38 @@
+# Пример прод-конфига nginx для momentum (TLS-терминация, Kestrel на 127.0.0.1:8080, префикс /momentum).
+# Копировать в /etc/nginx/sites-available/momentum и отредактировать домен/пути к сертификатам.
+# Префикс /momentum должен совпадать с EXPO_PUBLIC_BASE_PATH (сборка клиента)
+# и передаваться приложению заголовком X-Forwarded-Prefix.
+server {
+    listen 443 ssl http2;
+    server_name momentum.example;
+
+    ssl_certificate     /etc/letsencrypt/live/momentum.example/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/momentum.example/privkey.pem;
+    include             /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam         /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Максимальный шифроблоб 8 МиБ + запас на заголовки.
+    client_max_body_size 9m;
+
+    # Минимум цифрового следа: access-логи выключены.
+    access_log off;
+
+    # Приложение живёт за префиксом /momentum: nginx срезает префикс (proxy_pass со слэшем),
+    # а Kestrel восстанавливает его из заголовка X-Forwarded-Prefix.
+    location = /momentum { return 301 /momentum/; }
+    location /momentum/ {
+        proxy_pass         http://127.0.0.1:8080/;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Forwarded-For $remote_addr;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   X-Forwarded-Prefix /momentum;
+    }
+    location / { return 404; }
+}
+
+server {
+    listen 80;
+    server_name momentum.example;
+    location /.well-known/acme-challenge/ { root /var/www/html; }
+    location / { return 301 https://$host$request_uri; }
+}
