@@ -1,0 +1,23 @@
+{
+  "name": "momentum-client",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "test": "tsx --test tests/*.test.ts",
+    "export:web": "expo export --platform web"
+  },
+  "dependencies": {
+    "expo": "58.0.14",
+    "hash-wasm": "4.12.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native-web": "^0.21.4"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "@types/react": "~19.3.0",
+    "tsx": "4.23.15",
+    "typescript": "~6.0.3"
+  }
+}
