@@ -14,13 +14,14 @@ public sealed class VaultService(VaultStore store, IOptions<VaultOptions> option
     /// <summary>Доменное правило допустимого TTL.</summary>
     public bool IsValidTtl(int minutes) => minutes >= Options.MinTtlMinutes && minutes <= Options.MaxTtlMinutes;
 
-    /// <summary>Сохраняет блоб и возвращает hex-id (32 символа, 128 бит CSPRNG).</summary>
-    public string Create(byte[] blob, int ttlMinutes, bool oneTime)
+    /// <summary>Сохраняет блоб и возвращает hex-id (32 символа, 128 бит CSPRNG); null — место в хранилище кончилось.</summary>
+    public string? Create(byte[] blob, int ttlMinutes, bool oneTime)
     {
         var idHex = ToHex(RandomNumberGenerator.GetBytes(16));
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        store.Insert(idHex, blob, now + (long)ttlMinutes * 60, oneTime, now);
-        return idHex;
+        return store.Insert(idHex, blob, now + (long)ttlMinutes * 60, oneTime, now)
+            ? idHex
+            : null;
     }
 
     /// <summary>

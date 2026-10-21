@@ -34,7 +34,9 @@ public static class VaultEndpoints
             return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
         }
 
-        return Results.Json(new { id = vault.Create(blob, ttl, oneTime) });
+        return vault.Create(blob, ttl, oneTime) is { } id
+            ? Results.Json(new { id })
+            : Results.StatusCode(StatusCodes.Status507InsufficientStorage);
     }
 
     public static IResult Read(string id, VaultService vault)

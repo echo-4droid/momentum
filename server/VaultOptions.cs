@@ -19,4 +19,10 @@ public sealed record VaultOptions
 
     /// <summary>TTL по умолчанию, минут (24 часа).</summary>
     public int DefaultTtlMinutes { get; set; } = 1440;
+
+    /// <summary>Суммарный лимит хранимых блобов, байт; при превышении POST — 507.</summary>
+    public long MaxTotalBytes { get; set; } = 2L * 1024 * 1024 * 1024;
+
+    /// <summary>Минимальный резерв свободного места диска с БД, байт; ниже — POST 507.</summary>
+    public long DiskReserveBytes { get; set; } = 512L * 1024 * 1024;
 }

@@ -1,18 +1,19 @@
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
 namespace Momentum.Tests;
+
+internal sealed record IdResponse(string Id);
 
 public class SecretsEndpointTests : IClassFixture<MomentumFactory>
 {
     private readonly MomentumFactory _factory;
 
     public SecretsEndpointTests(MomentumFactory factory) => _factory = factory;
-
-    private sealed record IdResponse(string Id);
 
     [Fact]
     public async Task OneTimeSecret_CreateGetThenSecondGet()
@@ -140,5 +141,77 @@ public class RateLimitTests : IClassFixture<MomentumFactory>
         }
 
         Assert.Equal(HttpStatusCode.TooManyRequests, last);
+    }
+}
+
+/// <summary>Фабрика с тесной квотой хранилища (2048 байт) для тестов переполнения.</summary>
+public sealed class QuotaFactory : MomentumFactory
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.UseSetting("Vault:MaxTotalBytes", "2048");
+    }
+}
+
+public class OneTimeRaceTests : IClassFixture<MomentumFactory>
+{
+    private readonly MomentumFactory _factory;
+
+    public OneTimeRaceTests(MomentumFactory factory) => _factory = factory;
+
+    [Fact]
+    public async Task ParallelGets_ExactlyOneBlob()
+    {
+        var client = _factory.CreateClient();
+        var payload = RandomNumberGenerator.GetBytes(256);
+
+        using var post = await client.PostAsync(
+            "/api/v1/secrets?ttl_minutes=60&one_time=true", new ByteArrayContent(payload));
+        var id = JsonSerializer.Deserialize<IdResponse>(
+            await post.Content.ReadAsStringAsync(), JsonSerializerOptions.Web)!.Id;
+
+        // 16 одновременных чтений one-time секрета: ровно один получает блоб.
+        var responses = await Task.WhenAll(
+            Enumerable.Range(0, 16).Select(_ => client.GetAsync($"/api/v1/secrets/{id}")));
+
+        var oks = responses.Where(r => r.StatusCode == HttpStatusCode.OK).ToList();
+        Assert.Single(oks);
+        Assert.Equal(payload, await oks[0].Content.ReadAsByteArrayAsync());
+        Assert.All(responses.Where(r => r != oks[0]), r => Assert.Equal(HttpStatusCode.NotFound, r.StatusCode));
+    }
+}
+
+public class QuotaTests : IClassFixture<QuotaFactory>
+{
+    private readonly QuotaFactory _factory;
+
+    public QuotaTests(QuotaFactory factory) => _factory = factory;
+
+    private static async Task<string> PostAsync(HttpClient client, byte[] payload)
+    {
+        using var post = await client.PostAsync(
+            "/api/v1/secrets?ttl_minutes=60&one_time=true", new ByteArrayContent(payload));
+        Assert.Equal(HttpStatusCode.OK, post.StatusCode);
+        return JsonSerializer.Deserialize<IdResponse>(
+            await post.Content.ReadAsStringAsync(), JsonSerializerOptions.Web)!.Id;
+    }
+
+    [Fact]
+    public async Task QuotaExceeded_Returns507_AndFreesOnBurn()
+    {
+        var client = _factory.CreateClient();
+
+        // Квота 2048: два блоба по 1024 помещаются, третий — нет.
+        await PostAsync(client, new byte[1024]);
+        var id = await PostAsync(client, new byte[1024]);
+        using var rejected = await client.PostAsync(
+            "/api/v1/secrets", new ByteArrayContent(new byte[1024]));
+        Assert.Equal(HttpStatusCode.InsufficientStorage, rejected.StatusCode);
+
+        // Сжигание one-time освобождает место — вставка снова проходит.
+        using var get = await client.GetAsync($"/api/v1/secrets/{id}");
+        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        await PostAsync(client, new byte[1024]);
     }
 }
