@@ -18,11 +18,13 @@ server {
     access_log off;
 
     # Заголовки безопасности. Клиент собран без инлайн-скриптов: script-src 'self'
-    # достаточен; 'unsafe-inline' в style-src — для инлайн-сброса стилей Expo.
+    # достаточен; 'wasm-unsafe-eval' обязателен для Argon2id (WASM, hash-wasm) —
+    # без него браузер отвергает компиляцию модуля; 'unsafe-inline' в style-src —
+    # для инлайн-сброса стилей Expo.
     add_header Strict-Transport-Security "max-age=31536000" always;
     add_header Referrer-Policy no-referrer always;
     add_header X-Content-Type-Options nosniff always;
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
 
     # Приложение живёт за префиксом /momentum: nginx срезает префикс (proxy_pass со слэшем),
     # а Kestrel восстанавливает его из заголовка X-Forwarded-Prefix.

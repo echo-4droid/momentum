@@ -182,12 +182,8 @@ public class OneTimeRaceTests : IClassFixture<MomentumFactory>
     }
 }
 
-public class QuotaTests : IClassFixture<QuotaFactory>
+public class QuotaTests
 {
-    private readonly QuotaFactory _factory;
-
-    public QuotaTests(QuotaFactory factory) => _factory = factory;
-
     private static async Task<string> PostAsync(HttpClient client, byte[] payload)
     {
         using var post = await client.PostAsync(
@@ -200,7 +196,8 @@ public class QuotaTests : IClassFixture<QuotaFactory>
     [Fact]
     public async Task QuotaExceeded_Returns507_AndFreesOnBurn()
     {
-        var client = _factory.CreateClient();
+        using var factory = new QuotaFactory();
+        var client = factory.CreateClient();
 
         // Квота 2048: два блоба по 1024 помещаются, третий — нет.
         await PostAsync(client, new byte[1024]);
@@ -213,5 +210,39 @@ public class QuotaTests : IClassFixture<QuotaFactory>
         using var get = await client.GetAsync($"/api/v1/secrets/{id}");
         Assert.Equal(HttpStatusCode.OK, get.StatusCode);
         await PostAsync(client, new byte[1024]);
+    }
+
+    [Fact]
+    public async Task ParallelInserts_CannotExceedQuota()
+    {
+        // Свой экземпляр приложения: квота и рейт-лимит изолированы от других тестов.
+        using var factory = new QuotaFactory();
+        var client = factory.CreateClient();
+
+        // 8 одновременных вставок по 1024 при квоте 2048: ровно две проходят.
+        // Раньше счётчик читался до блокировки и перезаписывался устаревшим значением.
+        var responses = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ =>
+            client.PostAsync("/api/v1/secrets", new ByteArrayContent(new byte[1024]))));
+
+        Assert.Equal(2, responses.Count(r => r.StatusCode == HttpStatusCode.OK));
+        Assert.Equal(6, responses.Count(r => r.StatusCode == HttpStatusCode.InsufficientStorage));
+    }
+
+    [Fact]
+    public async Task SecretResponses_AreNotCacheable()
+    {
+        using var factory = new QuotaFactory();
+        var client = factory.CreateClient();
+        using var post = await client.PostAsync(
+            "/api/v1/secrets?ttl_minutes=60&one_time=true", new ByteArrayContent([1, 2, 3]));
+        var id = JsonSerializer.Deserialize<IdResponse>(
+            await post.Content.ReadAsStringAsync(), JsonSerializerOptions.Web)!.Id;
+
+        using var get = await client.GetAsync($"/api/v1/secrets/{id}");
+        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        Assert.Equal("no-store", get.Headers.CacheControl?.ToString());
+
+        using var status = await client.GetAsync($"/api/v1/secrets/{id}/status");
+        Assert.Equal(HttpStatusCode.NotFound, status.StatusCode); // one-time уже сожжён
     }
 }

@@ -28,7 +28,7 @@ public static class VaultEndpoints
             return Results.StatusCode(StatusCodes.Status400BadRequest);
         }
 
-        var blob = await ReadBlobAsync(req.Body, limits.MaxBlobBytes, ct);
+        var blob = await ReadBlobAsync(req.Body, limits.MaxBlobBytes, req.ContentLength, ct);
         if (blob is null || blob.Length == 0)
         {
             return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
@@ -39,26 +39,29 @@ public static class VaultEndpoints
             : Results.StatusCode(StatusCodes.Status507InsufficientStorage);
     }
 
-    public static IResult Read(string id, VaultService vault)
+    public static IResult Read(HttpContext ctx, string id, VaultService vault)
     {
+        // Шифротекст не должен оседать в кэше браузера на диске.
+        ctx.Response.Headers.CacheControl = "no-store";
         return vault.Take(id) is { } blob
             ? Results.Bytes(blob, "application/octet-stream")
             : Results.StatusCode(StatusCodes.Status404NotFound);
     }
 
     /// <summary>Факт доступности секрета: без блоба и без сжигания one-time.</summary>
-    public static IResult Status(string id, VaultService vault)
+    public static IResult Status(HttpContext ctx, string id, VaultService vault)
     {
+        ctx.Response.Headers.CacheControl = "no-store";
         return vault.IsAvailable(id)
             ? Results.Json(new { available = true })
             : Results.StatusCode(StatusCodes.Status404NotFound);
     }
 
 
-    /// <summary>Читает тело с прикладным лимитом.</summary>
-    private static async Task<byte[]?> ReadBlobAsync(Stream body, long maxBytes, CancellationToken ct)
+    /// <summary>Читает тело с прикладным лимитом; capacity по Content-Length — без роста удвоением.</summary>
+    private static async Task<byte[]?> ReadBlobAsync(Stream body, long maxBytes, long? contentLength, CancellationToken ct)
     {
-        using var ms = new MemoryStream();
+        using var ms = new MemoryStream(capacity: (int)Math.Min(contentLength ?? 0, maxBytes));
         var buffer = new byte[81920];
         long total = 0;
         int read;

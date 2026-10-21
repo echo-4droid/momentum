@@ -11,6 +11,13 @@ public sealed class VaultStore : IDisposable
     private readonly string _dbPath;
     private readonly VaultOptions _limits;
 
+    /// <summary>
+    /// Сериализует все операции, меняющие записи или счётчик: транзакции LiteDB
+    /// не изолируют параллельные read-check-write (общий read-lock до write-lock),
+    /// из-за чего квота обходилась параллельными вставками.
+    /// </summary>
+    private readonly object _sync = new();
+
     public VaultStore(string dbPath, VaultOptions limits)
     {
         _dbPath = Path.GetFullPath(dbPath);
@@ -20,42 +27,71 @@ public sealed class VaultStore : IDisposable
         var vault = _db.GetCollection<VaultDoc>("vault");
         vault.EnsureIndex(x => x.IdHex, true);
         vault.EnsureIndex(x => x.ExpiresAt);
+        MigrateBlobLengthAndRecount();
+    }
+
+    /// <summary>
+    /// Одноразово при старте: записям до введения BlobLength проставляется фактическая
+    /// длина (иначе legacy-блобы не занимают квоту), счётчик пересчитывается с нуля —
+    /// любой дрейф не переживает рестарт. По одному документу в памяти.
+    /// </summary>
+    private void MigrateBlobLengthAndRecount()
+    {
+        var raw = _db.GetCollection("vault");
+        var ids = raw.FindAll().Select(d => d["_id"]).ToList();
+        long total = 0;
+        foreach (var id in ids)
+        {
+            var doc = raw.FindById(id);
+            if (doc is null)
+                continue;
+            var blobLength = doc["Blob"].AsBinary.Length;
+            if (!doc.ContainsKey("BlobLength") || doc["BlobLength"].AsInt64 != blobLength)
+            {
+                doc["BlobLength"] = blobLength;
+                raw.Update(doc);
+            }
+            total += blobLength;
+        }
+        SetTotalBytes(total);
     }
 
     /// <summary>
     /// Сохраняет блоб; false — суммарный лимит превышен или на диске нет резерва.
-    /// Счётчик занятых байтов обновляется в той же транзакции, что и вставка.
     /// </summary>
     public bool Insert(string idHex, byte[] blob, long expiresAt, bool oneTime, long createdAt)
     {
         if (new DriveInfo(Path.GetPathRoot(_dbPath)!).AvailableFreeSpace < _limits.DiskReserveBytes) return false;
 
-        _db.BeginTrans();
-        try
+        lock (_sync)
         {
-            var total = TotalBytes() + blob.Length;
-            if (total > _limits.MaxTotalBytes)
+            _db.BeginTrans();
+            try
+            {
+                var total = TotalBytes() + blob.Length;
+                if (total > _limits.MaxTotalBytes)
+                {
+                    _db.Rollback();
+                    return false;
+                }
+                Vault.Insert(new VaultDoc
+                {
+                    IdHex = idHex,
+                    Blob = blob,
+                    BlobLength = blob.Length,
+                    ExpiresAt = expiresAt,
+                    OneTime = oneTime,
+                    CreatedAt = createdAt,
+                });
+                SetTotalBytes(total);
+                _db.Commit();
+                return true;
+            }
+            catch
             {
                 _db.Rollback();
-                return false;
+                throw;
             }
-            Vault.Insert(new VaultDoc
-            {
-                IdHex = idHex,
-                Blob = blob,
-                BlobLength = blob.Length,
-                ExpiresAt = expiresAt,
-                OneTime = oneTime,
-                CreatedAt = createdAt,
-            });
-            SetTotalBytes(total);
-            _db.Commit();
-            return true;
-        }
-        catch
-        {
-            _db.Rollback();
-            throw;
         }
     }
 
@@ -66,38 +102,43 @@ public sealed class VaultStore : IDisposable
     /// </summary>
     public byte[]? Take(string idHex, long now)
     {
-        _db.BeginTrans();
-        try
+        lock (_sync)
         {
-            var doc = Vault.FindOne(x => x.IdHex == idHex && x.ExpiresAt >= now);
-            if (doc is not null && doc.OneTime)
+            _db.BeginTrans();
+            try
             {
-                if (Vault.DeleteMany(x => x.IdHex == idHex) == 0)
-                    doc = null;
-                else
-                    SetTotalBytes(TotalBytes() - doc.BlobLength);
+                var doc = Vault.FindOne(x => x.IdHex == idHex && x.ExpiresAt >= now);
+                if (doc is not null && doc.OneTime)
+                {
+                    if (Vault.DeleteMany(x => x.IdHex == idHex) == 0)
+                        doc = null;
+                    else
+                        SetTotalBytes(TotalBytes() - doc.BlobLength);
+                }
+                _db.Commit();
+                return doc?.Blob;
             }
-            _db.Commit();
-            return doc?.Blob;
-        }
-        catch
-        {
-            _db.Rollback();
-            throw;
+            catch
+            {
+                _db.Rollback();
+                throw;
+            }
         }
     }
 
     /// <summary>
     /// Удаляет просроченное и пересчитывает счётчик занятых байтов.
-    /// Пересчёт без долгого write-lock: гонка с параллельной вставкой/сжиганием даёт
-    /// лишь краткий заниженный лимит (ложный 507), следующий пересчёт исправляет.
+    /// Все мутаторы сериализованы <see cref="_sync"/>, пересчёт консистентен.
     /// </summary>
     public long DeleteExpired(long now)
     {
-        var deleted = Vault.DeleteMany(x => x.ExpiresAt < now);
-        if (deleted > 0)
-            SetTotalBytes(Vault.Query().Select("$.BlobLength").ToDocuments().Sum(d => d["BlobLength"].AsInt64));
-        return deleted;
+        lock (_sync)
+        {
+            var deleted = Vault.DeleteMany(x => x.ExpiresAt < now);
+            if (deleted > 0)
+                SetTotalBytes(Vault.Query().Select("$.BlobLength").ToDocuments().Sum(d => d["BlobLength"].AsInt64));
+            return deleted;
+        }
     }
 
     /// <summary>

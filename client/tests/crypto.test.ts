@@ -54,6 +54,11 @@ describe('estimatePhraseEntropy', () => {
     assert.equal(estimatePhraseEntropy(''), 0);
   });
 
+  it('прогоны одинаковых символов схлопываются — повтор не добавляет энтропии', () => {
+    assert.ok(estimatePhraseEntropy('aaaaaaaaaaaaa') < 40); // 61.1 бита без схлопывания — обход
+    assert.ok(estimatePhraseEntropy('1111111111111') < 40);
+  });
+
   it('словарные слова вне разделителей считаются по словам', () => {
     // 3 слова × 12.9 бита: гораздо меньше, чем длина × классы символов
     const words = EFF_LARGE_WORDLIST.slice(0, 3).join(' ');

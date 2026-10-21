@@ -8,21 +8,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!--
-      LiteDB — полностью managed-хранилище: в пакете нет ни одной нативной библиотеки,
-      поэтому publish работает на любом glibc, который тянет сам .NET.
-    -->
     <PackageReference Include="LiteDB" Version="5.0.21" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Remove="tests/**" />
   </ItemGroup>
-
-  <!--
-    Клиент собирается при каждой сборке сервера: Run (F5) в Rider = экспорт Expo web
-    + копирование в wwwroot + сервер. Отключить: -p:EnableBuildClient=false.
-  -->
+  
   <Target Name="BuildClient" BeforeTargets="Build" Condition="'$(EnableBuildClient)' != 'false'">
     <Exec Condition="!Exists('../client/node_modules')" Command="npm install" WorkingDirectory="../client" />
     <Exec Command="npm run export:web" WorkingDirectory="../client" />
@@ -33,10 +25,9 @@
           DestinationFiles="@(_ClientDist->'$(MSBuildProjectDirectory)/wwwroot/%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
-
-  <!-- Мусор SDK/кривых запусков после публикации — вычищаем из пакета. -->
+  
   <Target Name="CleanPublishJunk" AfterTargets="Publish">
-    <RemoveDir Directories="$(PublishDir)tests;$(PublishDir)publish" />
+    <RemoveDir Directories="$(PublishDir)tests;$(PublishDir)publish;$(PublishDir)data" />
   </Target>
 
 </Project>

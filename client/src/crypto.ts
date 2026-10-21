@@ -115,10 +115,12 @@ const EFF_WORD_SET = new Set(EFF_LARGE_WORDLIST);
  * Грубая оценка энтропии фразы в битах — для предупреждения при ослаблении.
  * Фраза из ≥2 слов (дефисы/пробелы): слово из EFF-списка даёт ~12.9 бита,
  * прочее — длина × 6.5 бита; без разделителей — перебор по классам символов.
- * Оценка эвристическая, занижать не обязана.
+ * Прогоны ≥3 одинаковых символов схлопываются до одного («aaaa…» не длиннее «a»).
+ * Оценка эвристическая, занижать не обязана; алфавитные последовательности
+ * («abcdefgh…») остаются слепым пятном.
  */
 export function estimatePhraseEntropy(phrase: string): number {
-  const normalized = normalizePassphrase(phrase);
+  const normalized = normalizePassphrase(phrase).replace(/(.)\1{2,}/g, '$1');
   if (normalized.length === 0) {
     return 0;
   }

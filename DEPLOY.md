@@ -83,8 +83,10 @@ server {
     add_header Referrer-Policy no-referrer always;
     add_header X-Content-Type-Options nosniff always;
     # Клиент собран без инлайн-скриптов: script-src 'self' достаточен;
-    # 'unsafe-inline' в style-src — для инлайн-сброса стилей Expo.
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
+    # 'wasm-unsafe-eval' обязателен для Argon2id (WASM, hash-wasm) —
+    # без него браузер отвергает компиляцию модуля; 'unsafe-inline' в style-src —
+    # для инлайн-сброса стилей Expo.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
 
     location = /momentum { return 301 /momentum/; }
     location /momentum/ {
