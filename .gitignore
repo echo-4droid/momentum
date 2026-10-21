@@ -1,0 +1,27 @@
+# Папки агентов (Codex и др.)
+.agents/
+.codex/
+.claude/
+
+# IDE
+.idea/
+.vscode/
+*.user
+
+# Сборка (каждый подкаталог: server/ и client/)
+node_modules/
+.expo/
+dist/
+web-build/
+bin/
+obj/
+publish/
+wwwroot/
+
+# Рантайм (БД LiteDB создаётся приложением)
+data/
+*.db
+
+# ОС
+.DS_Store
+Thumbs.db

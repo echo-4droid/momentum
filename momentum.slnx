@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="server/Momentum.csproj" />
+  <Folder Name="/tests/">
+    <Project Path="server/tests/Momentum.Tests/Momentum.Tests.csproj" />
+  </Folder>
+</Solution>
