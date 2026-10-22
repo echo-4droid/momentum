@@ -47,16 +47,19 @@ export default function ReadScreen({ id }: { id: string }) {
   const [closing, setClosing] = useState(false);
   // Предварительная проверка доступности: секрет уже прочитан или истёк — открыть нечего.
   const [unavailable, setUnavailable] = useState(false);
+  // После первого нажатия «Открыть» серверный статус не управляет страницей:
+  // блоб уже запрошен (и, возможно, в памяти) — локальная расшифровка от него не зависит.
+  const openedRef = useRef(false);
 
   useEffect(() => {
     // Битый фрагмент ссылки: статус не нужен — блоб и так не запрашивается.
-    if (linkKey.fromHash && !linkKey.key) {
+    if ((linkKey.fromHash && !linkKey.key) || openedRef.current) {
       return;
     }
     let cancelled = false;
     fetchSecretStatus(id)
       .then((ok) => {
-        if (!cancelled) {
+        if (!cancelled && !openedRef.current) {
           setUnavailable(!ok);
         }
       })
@@ -94,7 +97,8 @@ export default function ReadScreen({ id }: { id: string }) {
     const timer = setInterval(() => {
       const now = Date.now();
       if (destroyAtRef.current !== null && now >= destroyAtRef.current) {
-        // «Уничтожение»: содержимое и его состояние стираются со страницы.
+        // «Удаление со страницы»: содержимое и его состояние стираются из этого открытия.
+        blobRef.current = null;
         setPayload(null);
         setDestroyed(true);
         return;
@@ -107,14 +111,19 @@ export default function ReadScreen({ id }: { id: string }) {
     return () => clearInterval(timer);
   }, [payload, revealCount]);
 
-  // Блоб (и сгорание one-time) запрашивается только по нажатию «Открыть».
+  // Блоб запрашивается один раз и держится в памяти: повторные попытки расшифровки
+  // идут по локальной копии, чтобы опечатка во фразе не сжигала one-time секрет
+  // повторным GET (сервер удаляет блоб до расшифровки).
+  const blobRef = useRef<Uint8Array | null>(null);
+
   async function runDecrypt(input: string | Uint8Array): Promise<void> {
+    openedRef.current = true;
     setError(null);
     setBusy(true);
     try {
-      const blob = await fetchSecretBlob(id);
+      blobRef.current ??= await fetchSecretBlob(id);
       // Деталей ошибки не раскрываем: неверная фраза/ключ и битый конверт выглядят одинаково.
-      setPayload(await decrypt(blob, input));
+      setPayload(await decrypt(blobRef.current, input));
     } catch (e) {
       setError(
         e instanceof Error && e.message === 'NOT_FOUND'
@@ -144,7 +153,8 @@ export default function ReadScreen({ id }: { id: string }) {
     </Pressable>
   );
 
-  // Подсказка соответствует реальному поведению: скрытие обратимо, удаление — нет.
+  // Подсказка называет только то, что произойдёт на странице: скрытие обратимо кнопкой,
+  // удаление действует до конца открытия.
   const view = payload?.view;
   const showHint = (() => {
     const hideOn = (view?.hideAfterSeconds ?? 0) > 0;
@@ -153,12 +163,12 @@ export default function ReadScreen({ id }: { id: string }) {
     if (hideOn) {
       parts.push(
         hideLeft !== null && hideLeft > 0
-          ? `Через ${hideLeft} с содержимое скроется — кнопка на занавесе вернёт его.`
-          : 'Содержимое скрыто — кнопка на занавесе вернёт его.',
+          ? `Через ${hideLeft} с содержимое скроется — «Показать содержимое» вернёт его.`
+          : 'Содержимое скрыто — «Показать содержимое» вернёт его.',
       );
     }
     if (destroyMin > 0) {
-      parts.push(`Через ${destroyMin} мин оно будет удалено со страницы — необратимо.`);
+      parts.push(`Через ${destroyMin} мин содержимое будет убрано с этой страницы и не вернётся в этом открытии.`);
     }
     if (parts.length === 0) {
       parts.push('Сохраните нужное перед закрытием страницы.');
@@ -178,10 +188,10 @@ export default function ReadScreen({ id }: { id: string }) {
         {destroyed ? (
           <FadeIn duration={350}>
             <View style={[u.card, s.goneCard]}>
-              <Text style={s.goneTitle}>Содержимое удалено со страницы</Text>
+              <Text style={s.goneTitle}>Время показа истекло</Text>
               <Text style={u.hint}>
-                Время показа истекло. Обновите страницу, чтобы открыть секрет повторно, — если он
-                ещё хранится на сервере.
+                Содержимое убрано с этой страницы. Если сервер ещё хранит секрет, обновление
+                страницы откроет его заново — таймеры начнут отсчёт сначала.
               </Text>
             </View>
           </FadeIn>
@@ -209,8 +219,7 @@ export default function ReadScreen({ id }: { id: string }) {
           )
         ) : unavailable ? (
           <Text style={u.error}>
-            Секрет недоступен: он уже прочитан или срок его действия истёк. Открывать нечего —
-            создатель мог передать ссылку повторно или время вышло.
+            Секрет недоступен: он уже прочитан или срок его действия истёк.
           </Text>
         ) : linkKey.fromHash && !linkKey.key ? (
           // Битый фрагмент: даже не пробуем — GET сжёг бы одноразовый секрет впустую.
