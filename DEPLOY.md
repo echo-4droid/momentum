@@ -3,6 +3,10 @@
 Схема: **nginx (TLS) → systemd → Kestrel 127.0.0.1:8080 → LiteDB**. .NET и БД на сервере не нужны — деплоится self-contained пакет.
 Префикс `/momentum` задаётся в двух местах и должен совпадать: `EXPO_PUBLIC_BASE_PATH` при сборке клиента (шаг 1) и `X-Forwarded-Prefix` в nginx (шаг 4). Сборочный префикс middleware не заменяет — он зашит в ссылки и пути ассетов статического бандла. Для деплоя в корень — ни то, ни другое.
 
+Рекомендации по схеме размещения (отдельный поддомен, HSTS preload, бэкапы `data/`): [README.md](README.md#рекомендации-по-развёртыванию).
+
+Для сборки локально нужен SDK 10.0.113+ из диапазона 10.0.1xx (`global.json`). Рантайм вшит в бинарник: после каждого Patch Tuesday пересобирайте пакет и перевыкладывайте (шаги 1 и 3).
+
 ## 1. Собрать пакет (локально)
 
 ```bash
@@ -64,6 +68,16 @@ sudo systemctl enable --now momentum
 curl -fsS http://127.0.0.1:8080/ -o /dev/null && echo OK
 ```
 
+Опционально — шифрование файла БД: задайте пароль до первого запуска с непустым `data/` (пароль применяется к новой БД; существующая незашифрованная БД с паролем не откроется):
+
+```bash
+sudo systemctl edit momentum
+# [Service]
+# Environment=Momentum__DatabasePassword=<пароль>
+```
+
+Без пароля БД защищена только правами файла (0600, UMask=0077): зашифрованные блобы остаются зашифрованными, но ID ссылок и времена жизни читаются любым, кто получит файл или снапшот диска.
+
 ## 4. nginx + TLS
 
 DNS: A-запись домена → IP сервера.
@@ -76,10 +90,19 @@ server {
     server_name momentum.example;
 
     client_max_body_size 9m;
+
+    # Таймауты: медленный клиент не держит соединение дольше минуты.
+    client_body_timeout 60s;
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout 60s;
+
     access_log off;
 
     # Заголовки безопасности; certbot скопирует этот блок в 443 при выпуске сертификата.
-    add_header Strict-Transport-Security "max-age=31536000" always;
+    # includeSubDomains защищает поддомены momentum.example; preload — осознанное решение,
+    # см. «Рекомендации по развёртыванию» в README.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header Referrer-Policy no-referrer always;
     add_header X-Content-Type-Options nosniff always;
     # Клиент собран без инлайн-скриптов: script-src 'self' достаточен;

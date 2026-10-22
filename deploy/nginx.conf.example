@@ -14,6 +14,17 @@ server {
     # Максимальный шифроблоб 8 МиБ + запас на заголовки.
     client_max_body_size 9m;
 
+    # Таймауты: медленный клиент не держит соединение дольше минуты,
+    # Kestrel отвечает быстрее — 502 от простоя не бывает.
+    client_body_timeout 60s;
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout 60s;
+
+    # Лимит одновременных соединений с одного адреса: в http-блок добавьте
+    #   limit_conn_zone $binary_remote_addr zone=perip:10m;
+    # здесь — limit_conn perip 10;
+
     # Минимум цифрового следа: access-логи выключены.
     access_log off;
 
@@ -21,7 +32,9 @@ server {
     # достаточен; 'wasm-unsafe-eval' обязателен для Argon2id (WASM, hash-wasm) —
     # без него браузер отвергает компиляцию модуля; 'unsafe-inline' в style-src —
     # для инлайн-сброса стилей Expo.
-    add_header Strict-Transport-Security "max-age=31536000" always;
+    # includeSubDomains защищает поддомены momentum.example; preload — осознанное решение,
+    # см. «Рекомендации по развёртыванию» в README.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header Referrer-Policy no-referrer always;
     add_header X-Content-Type-Options nosniff always;
     add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
