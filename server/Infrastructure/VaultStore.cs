@@ -127,16 +127,21 @@ public sealed class VaultStore : IDisposable
     }
 
     /// <summary>
-    /// Удаляет просроченное и пересчитывает счётчик занятых байтов.
-    /// Все мутаторы сериализованы <see cref="_sync"/>, пересчёт консистентен.
+    /// Удаляет просроченное и вычитает их длины из счётчика занятых байтов.
+    /// Читаются только просроченные записи: полный пересчёт коллекции читал бы все
+    /// блобы (при полной квоте — до 2 ГиБ каждую минуту), держа <see cref="_sync"/>.
     /// </summary>
     public long DeleteExpired(long now)
     {
         lock (_sync)
         {
+            var freed = 0L;
+            foreach (var doc in Vault.Query().Where(x => x.ExpiresAt < now).ToDocuments())
+                freed += doc["BlobLength"].AsInt64;
+
             var deleted = Vault.DeleteMany(x => x.ExpiresAt < now);
             if (deleted > 0)
-                SetTotalBytes(Vault.Query().Select("$.BlobLength").ToDocuments().Sum(d => d["BlobLength"].AsInt64));
+                SetTotalBytes(TotalBytes() - freed);
             return deleted;
         }
     }

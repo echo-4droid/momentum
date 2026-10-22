@@ -58,19 +58,37 @@ public static class VaultEndpoints
     }
 
 
-    /// <summary>Читает тело с прикладным лимитом; capacity по Content-Length — без роста удвоением.</summary>
+    /// <summary>
+    /// Читает тело с прикладным лимитом. По Content-Length — одна копия блоба:
+    /// точный массив без MemoryStream и ToArray. Без заголовка (chunked) — буферизующий
+    /// путь как раньше; nginx всегда отправляет Content-Length.
+    /// </summary>
     private static async Task<byte[]?> ReadBlobAsync(Stream body, long maxBytes, long? contentLength, CancellationToken ct)
     {
+        if (contentLength is > 0 && contentLength <= maxBytes)
+        {
+            var blob = new byte[contentLength.Value];
+            var total = 0;
+            int read;
+            while (total < blob.Length &&
+                   (read = await body.ReadAsync(blob.AsMemory(total, blob.Length - total), ct)) > 0)
+            {
+                total += read;
+            }
+            // Тело короче заголовка — соединение оборвалось: неполный блоб не принимаем.
+            return total < blob.Length ? null : blob;
+        }
+
         using var ms = new MemoryStream(capacity: (int)Math.Min(contentLength ?? 0, maxBytes));
         var buffer = new byte[81920];
-        long total = 0;
-        int read;
-        while ((read = await body.ReadAsync(buffer, ct)) > 0)
+        long totalChunked = 0;
+        int chunk;
+        while ((chunk = await body.ReadAsync(buffer, ct)) > 0)
         {
-            total += read;
-            if (total > maxBytes)
+            totalChunked += chunk;
+            if (totalChunked > maxBytes)
                 return null;
-            ms.Write(buffer, 0, read);
+            ms.Write(buffer, 0, chunk);
         }
 
         return ms.ToArray();
