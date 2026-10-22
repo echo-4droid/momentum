@@ -44,5 +44,8 @@ public sealed class VaultService(VaultStore store, IOptions<VaultOptions> option
 
     public long DeleteExpired() => store.DeleteExpired(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
+    /// <summary>Обслуживание файла БД (Checkpoint, опционально Rebuild) — вызывает фоновая чистка.</summary>
+    public void Maintain(bool rebuild) => store.Maintain(rebuild);
+
     private static string ToHex(byte[] id) => Convert.ToHexString(id).ToLowerInvariant();
 }

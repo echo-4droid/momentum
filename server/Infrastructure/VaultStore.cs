@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using LiteDB;
 
 namespace Momentum.Infrastructure;
@@ -9,6 +10,7 @@ public sealed class VaultStore : IDisposable
 {
     private readonly LiteDatabase _db;
     private readonly string _dbPath;
+    private readonly string? _password;
     private readonly VaultOptions _limits;
 
     /// <summary>
@@ -18,12 +20,18 @@ public sealed class VaultStore : IDisposable
     /// </summary>
     private readonly object _sync = new();
 
-    public VaultStore(string dbPath, VaultOptions limits)
+    public VaultStore(string dbPath, string dbPassword, VaultOptions limits)
     {
         _dbPath = Path.GetFullPath(dbPath);
         _limits = limits;
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(dbPath))!);
-        _db = new LiteDatabase(dbPath);
+        _password = string.IsNullOrEmpty(dbPassword) ? null : dbPassword;
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        // Пароль задаётся типизированным свойством: разбор строки подключения
+        // искажает значения с пробелами и кавычками, и Rebuild получил бы другой пароль.
+        var connectionString = new ConnectionString { Filename = _dbPath };
+        if (_password != null)
+            connectionString.Password = dbPassword;
+        _db = new LiteDatabase(connectionString);
         var vault = _db.GetCollection<VaultDoc>("vault");
         vault.EnsureIndex(x => x.IdHex, true);
         vault.EnsureIndex(x => x.ExpiresAt);
@@ -144,6 +152,40 @@ public sealed class VaultStore : IDisposable
                 SetTotalBytes(TotalBytes() - freed);
             return deleted;
         }
+    }
+
+    /// <summary>
+    /// Сервисное обслуживание файла БД: Checkpoint подтягивает журнал, Rebuild
+    /// возвращает страницы удалённых записей. Вызывается фоновой чисткой.
+    /// </summary>
+    public void Maintain(bool rebuild)
+    {
+        lock (_sync)
+        {
+            _db.Checkpoint();
+            if (!rebuild)
+                return;
+            // Rebuild без пароля создаёт незашифрованный файл и не открывается заново
+            // (LiteDB #2449): пароль передаётся явно, шифрование сохраняется.
+            _db.Rebuild(new LiteDB.Engine.RebuildOptions { Password = _password });
+            CleanRebuildBackups();
+        }
+    }
+
+    /// <summary>
+    /// Убирает резервные копии Rebuild — ровно те имена, что создаёт LiteDB
+    /// (FileHelper.GetSuffixFile): <c>{имя}-backup{ext}</c> и <c>{имя}-backup-{n}{ext}</c>,
+    /// номер без ограничения (LiteDB нумерует, пока файлы существуют).
+    /// Они дублируют удалённые записи и расходуют диск вне квоты живых блобов.
+    /// </summary>
+    private void CleanRebuildBackups()
+    {
+        var dir = Path.GetDirectoryName(_dbPath)!;
+        var baseName = Path.GetFileNameWithoutExtension(_dbPath);
+        var ext = Path.GetExtension(_dbPath);
+        var backup = new Regex($"^{Regex.Escape(baseName)}-backup(?:-\\d+)?{Regex.Escape(ext)}$");
+        foreach (var file in Directory.EnumerateFiles(dir).Where(f => backup.IsMatch(Path.GetFileName(f))))
+            File.Delete(file);
     }
 
     /// <summary>
