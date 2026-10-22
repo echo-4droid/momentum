@@ -88,10 +88,6 @@ export default function CreateScreen() {
       setError('Введите сообщение или прикрепите файл.');
       return;
     }
-    if (settings.mode === 'phrase' && !settings.passphrase.trim()) {
-      setError('Фраза не может быть пустой — откройте «Изменить».');
-      return;
-    }
     setBusy(true);
     try {
       const payload: Payload = {};
@@ -170,7 +166,8 @@ export default function CreateScreen() {
             </>
           ) : (
             <Text style={[u.hint, s.section]}>
-              Вся секретность — в самой ссылке: кто получит её, прочитает секрет.
+              Ключ встроен в ссылку: секрет прочитает любой, у кого она окажется, — включая
+              мессенджер, облачную синхронизацию и буфер обмена.
             </Text>
           )}
 

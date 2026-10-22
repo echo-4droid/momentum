@@ -55,8 +55,14 @@ export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 /** Лимит шифроблоба на сервере (idea.md, раздел 5). */
 export const MAX_BLOB_BYTES = 8 * 1024 * 1024;
 
-const WORDS_PER_PHRASE = 8;
+/** Число слов в фразе: выбирает создатель; свободный ввод фразы отсутствует. */
+export const MIN_WORDS = 6;
+export const MAX_WORDS = 10;
+export const DEFAULT_WORDS = 8;
 const WORD_SEPARATOR = '-';
+
+/** Энтропия одного слова EFF large, бит (log2 7776 ≈ 12.9). */
+export const WORD_ENTROPY_BITS = Math.log2(EFF_LARGE_WORDLIST.length);
 
 export interface FilePayload {
   name: string;
@@ -108,41 +114,16 @@ export function normalizePassphrase(phrase: string): string {
   return phrase.trim().normalize('NFKC');
 }
 
-const WORD_ENTROPY_BITS = Math.log2(EFF_LARGE_WORDLIST.length); // ≈ 12.9 бита за слово из списка
-const EFF_WORD_SET = new Set(EFF_LARGE_WORDLIST);
-
-/**
- * Грубая оценка энтропии фразы в битах — для предупреждения при ослаблении.
- * Фраза из ≥2 слов (дефисы/пробелы): слово из EFF-списка даёт ~12.9 бита,
- * прочее — длина × 6.5 бита; без разделителей — перебор по классам символов.
- * Прогоны ≥3 одинаковых символов схлопываются до одного («aaaa…» не длиннее «a»).
- * Оценка эвристическая, занижать не обязана; алфавитные последовательности
- * («abcdefgh…») остаются слепым пятном.
- */
-export function estimatePhraseEntropy(phrase: string): number {
-  const normalized = normalizePassphrase(phrase).replace(/(.)\1{2,}/g, '$1');
-  if (normalized.length === 0) {
-    return 0;
+/** Число слов в фразе задаёт создатель; свободный ввод фразы у отправителя отсутствует. */
+export function generatePassphrase(wordCount = DEFAULT_WORDS): string {
+  if (!Number.isInteger(wordCount) || wordCount < MIN_WORDS || wordCount > MAX_WORDS) {
+    throw new CryptoError('BAD_WORD_COUNT');
   }
-  const words = normalized.split(/[-\s]+/).filter(Boolean);
-  if (words.length >= 2) {
-    return words.reduce((sum, w) => sum + (EFF_WORD_SET.has(w) ? WORD_ENTROPY_BITS : w.length * 6.5), 0);
-  }
-  let pool = 0;
-  if (/[a-z]/.test(normalized)) pool += 26;
-  if (/[A-Z]/.test(normalized)) pool += 26;
-  if (/[0-9]/.test(normalized)) pool += 10;
-  if (/[^a-zA-Z0-9]/.test(normalized)) pool += 33;
-  return normalized.length * Math.log2(pool);
-}
-
-/** 8 слов EFF large wordlist через CSPRNG с reject-семплированием. */
-export function generatePassphrase(): string {
   const count = EFF_LARGE_WORDLIST.length;
   const limit = Math.floor(65536 / count) * count; // кратная граница против смещения
   const buf = new Uint16Array(1);
   const words: string[] = [];
-  for (let i = 0; i < WORDS_PER_PHRASE; i++) {
+  for (let i = 0; i < wordCount; i++) {
     let index: number;
     do {
       crypto.getRandomValues(buf);

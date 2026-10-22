@@ -18,7 +18,6 @@ import {
   CryptoError,
   decrypt,
   encrypt,
-  estimatePhraseEntropy,
   generateLinkKey,
   generatePassphrase,
   MAX_TEXT_CHARS,
@@ -36,38 +35,21 @@ async function fails(run: () => Promise<unknown>, code: string): Promise<void> {
 }
 
 describe('generatePassphrase', () => {
-  it('даёт 8 слов из EFF large wordlist через дефис', () => {
+  it('по умолчанию даёт 8 слов из EFF large wordlist через дефис', () => {
     const words = generatePassphrase().split('-');
     assert.equal(words.length, 8);
     assert.ok(words.every((w) => EFF_LARGE_WORDLIST.includes(w)));
   });
-});
 
-describe('estimatePhraseEntropy', () => {
-  it('порождающая фраза ≈ 103 бита', () => {
-    const bits = estimatePhraseEntropy(generatePassphrase());
-    assert.ok(bits > 100 && bits < 106, `получено ${bits}`);
+  it('выбранное число слов соблюдается на границах диапазона', () => {
+    assert.equal(generatePassphrase(6).split('-').length, 6);
+    assert.equal(generatePassphrase(10).split('-').length, 10);
   });
 
-  it('один символ — очень слабо', () => {
-    assert.ok(estimatePhraseEntropy('a') < 40);
-    assert.equal(estimatePhraseEntropy(''), 0);
-  });
-
-  it('прогоны одинаковых символов схлопываются — повтор не добавляет энтропии', () => {
-    assert.ok(estimatePhraseEntropy('aaaaaaaaaaaaa') < 40); // 61.1 бита без схлопывания — обход
-    assert.ok(estimatePhraseEntropy('1111111111111') < 40);
-  });
-
-  it('словарные слова вне разделителей считаются по словам', () => {
-    // 3 слова × 12.9 бита: гораздо меньше, чем длина × классы символов
-    const words = EFF_LARGE_WORDLIST.slice(0, 3).join(' ');
-    assert.ok(Math.abs(estimatePhraseEntropy(words) - 3 * Math.log2(7776)) < 0.01);
-  });
-
-  it('мусорная фраза без слов оценивается по классам символов', () => {
-    // 20 символов нижнего регистра: 20 × log2(26) ≈ 94 бита
-    assert.ok(Math.abs(estimatePhraseEntropy('qzmfrkwpultxjnvbhyga') - 20 * Math.log2(26)) < 0.01);
+  it('число слов вне 6–10 отклоняется', () => {
+    assert.throws(() => generatePassphrase(5), CryptoError);
+    assert.throws(() => generatePassphrase(11), CryptoError);
+    assert.throws(() => generatePassphrase(7.5), CryptoError);
   });
 });
 

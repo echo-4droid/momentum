@@ -3,23 +3,22 @@
  * «Отмена» и крестик закрывают без изменений.
  */
 import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { estimatePhraseEntropy, generatePassphrase } from './crypto';
+import { DEFAULT_WORDS, generatePassphrase, MAX_WORDS, MIN_WORDS, WORD_ENTROPY_BITS } from './crypto';
 import { colors, Segmented, styles as u } from './ui';
 
 export type TransferMode = 'phrase' | 'link';
-
-/** Пороги предупреждения о слабой фразе, бит (≈ длина и состав, не точная энтропия). */
-const WEAK_ENTROPY_BITS = 60;
-const VERY_WEAK_ENTROPY_BITS = 40;
 
 /** Настройки секрета: живут в форме, правятся в модалке, применяются по «Сохранить». */
 export interface Settings {
   ttlMinutes: number;
   oneTime: boolean;
   mode: TransferMode;
+  /** Сгенерированная фраза режима «фраза отдельно»; свободный ввод отсутствует. */
   passphrase: string;
+  /** Число слов последней генерации; смена значения порождает новую фразу. */
+  passphraseWords: number;
   /** Скрыть содержимое у получателя через N секунд; 0 — выключено. */
   hideSeconds: number;
   /** Удалить содержимое со страницы получателя через N минут; 0 — выключено. */
@@ -56,13 +55,19 @@ export const MODE_LABEL: Record<TransferMode, string> = {
   link: 'Ключ в ссылке',
 };
 
-/** Фраза генерируется сразу и правится в модалке; в режиме «ключ в ссылке» не используется. */
+const WORD_COUNTS = Array.from(
+  { length: MAX_WORDS - MIN_WORDS + 1 },
+  (_, i) => MIN_WORDS + i,
+);
+
+/** Фраза генерируется сразу и не редактируется; в режиме «ключ в ссылке» не используется. */
 export function defaultSettings(): Settings {
   return {
     ttlMinutes: TTL_OPTIONS[1].minutes,
     oneTime: true,
     mode: 'link',
     passphrase: generatePassphrase(),
+    passphraseWords: DEFAULT_WORDS,
     hideSeconds: HIDE_OPTIONS[2].seconds,
     destroyMinutes: DESTROY_OPTIONS[2].minutes,
   };
@@ -78,22 +83,18 @@ export function SettingsModal({
   onSave: (settings: Settings) => void;
 }) {
   const [draft, setDraft] = useState<Settings>(initial);
-  const [ackWeak, setAckWeak] = useState(false);
-  const phraseEmpty = draft.mode === 'phrase' && draft.passphrase.trim().length === 0;
-  const phraseBits = draft.mode === 'phrase' ? estimatePhraseEntropy(draft.passphrase) : Infinity;
-  const weakPhrase = draft.mode === 'phrase' && phraseBits < WEAK_ENTROPY_BITS;
-  const canSave = !phraseEmpty && (!weakPhrase || ackWeak);
 
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
       <View style={s.overlay}>
         <View style={s.panel}>
-          <View style={s.panelHead}>
-            <Text style={s.panelTitle}>Настройки секрета</Text>
-            <Pressable onPress={onClose} hitSlop={8}>
-              <Text style={s.remove}>✕</Text>
-            </Pressable>
-          </View>
+          <ScrollView style={s.panelBody} bounces={false} contentContainerStyle={s.panelContent}>
+            <View style={s.panelHead}>
+              <Text style={s.panelTitle}>Настройки секрета</Text>
+              <Pressable onPress={onClose} hitSlop={8}>
+                <Text style={s.remove}>✕</Text>
+              </Pressable>
+            </View>
 
           <Text style={u.label}>Срок хранения</Text>
           <Segmented
@@ -124,7 +125,7 @@ export function SettingsModal({
           />
           <Text style={[u.hint, s.timerHint]}>
             Оба таймера запускаются у получателя после расшифровки: скрытие прячет содержимое
-            шумом, удаление стирает его со страницы.
+            шумом, удаление убирает его с этой страницы.
           </Text>
 
           <Text style={[u.label, s.section]}>Передача ключа</Text>
@@ -133,58 +134,35 @@ export function SettingsModal({
           {draft.mode === 'phrase' ? (
             <>
               <Text style={[u.label, s.section]}>Фраза</Text>
-              <TextInput
-                style={[u.field, u.mono]}
-                multiline
-                value={draft.passphrase}
-                onChangeText={(passphrase) => {
-                  setDraft({ ...draft, passphrase });
-                  setAckWeak(false);
-                }}
-                placeholder="Фраза"
-                placeholderTextColor={colors.faint}
-                autoCapitalize="none"
-                autoCorrect={false}
+              <View style={[u.field, s.phraseBox]}>
+                <Text style={[u.mono, s.phraseText]}>{draft.passphrase}</Text>
+              </View>
+              <Text style={[u.label, s.section]}>Слов во фразе</Text>
+              <Segmented
+                options={WORD_COUNTS.map((n) => ({ value: n, label: String(n) }))}
+                value={draft.passphraseWords}
+                onChange={(passphraseWords) =>
+                  setDraft({ ...draft, passphraseWords, passphrase: generatePassphrase(passphraseWords) })
+                }
               />
               <View style={s.phraseRow}>
                 <Pressable
-                  onPress={() => {
-                    setDraft({ ...draft, passphrase: generatePassphrase() });
-                    setAckWeak(false);
-                  }}
+                  onPress={() => setDraft({ ...draft, passphrase: generatePassphrase(draft.passphraseWords) })}
                   hitSlop={6}
                 >
                   <Text style={u.link}>Новая фраза</Text>
                 </Pressable>
-                {phraseEmpty ? <Text style={s.phraseError}>Фраза не может быть пустой.</Text> : null}
-                {!phraseEmpty && weakPhrase ? (
-                  <Text style={s.phraseError}>
-                    {phraseBits < VERY_WEAK_ENTROPY_BITS ? 'Очень слабая' : 'Слабая'} фраза — переберут офлайн.
-                  </Text>
-                ) : null}
+                <Text style={u.hint}>≈ {Math.round(draft.passphraseWords * WORD_ENTROPY_BITS)} бит</Text>
               </View>
-              {weakPhrase ? (
-                <Pressable style={s.checkRow} onPress={() => setAckWeak(!ackWeak)}>
-                  <View style={[s.checkbox, ackWeak && s.checkboxOn]}>
-                    {ackWeak ? <Text style={s.checkMark}>✓</Text> : null}
-                  </View>
-                  <Text style={s.checkLabel}>
-                    Использовать слабую фразу на свой риск: при утечке шифротекста его можно перебрать.
-                  </Text>
-                </Pressable>
-              ) : null}
             </>
           ) : null}
+          </ScrollView>
 
           <View style={s.panelFooter}>
             <Pressable onPress={onClose} hitSlop={8}>
               <Text style={s.cancelText}>Отмена</Text>
             </Pressable>
-            <Pressable
-              style={[u.primary, s.saveButton, !canSave && u.primaryDisabled]}
-              onPress={() => onSave(draft)}
-              disabled={!canSave}
-            >
+            <Pressable style={[u.primary, s.saveButton]} onPress={() => onSave(draft)}>
               <Text style={u.primaryText}>Сохранить</Text>
             </Pressable>
           </View>
@@ -214,7 +192,15 @@ const s = StyleSheet.create({
     maxWidth: 440,
     backgroundColor: colors.white,
     borderRadius: 14,
-    padding: 20,
+    // Панель не выше 90% экрана: содержимое скроллится, футер с «Сохранить» виден всегда.
+    maxHeight: '90%',
+  },
+  panelBody: {
+    flexShrink: 1,
+  },
+  panelContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
   panelHead: {
     flexDirection: 'row',
@@ -269,16 +255,23 @@ const s = StyleSheet.create({
     marginTop: 10,
     flexWrap: 'wrap',
   },
-  phraseError: {
-    fontSize: 13,
-    color: colors.danger,
+  phraseBox: {
+    minHeight: 60,
+    justifyContent: 'center',
+  },
+  phraseText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.text,
   },
   panelFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: 20,
-    marginTop: 24,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 20,
   },
   cancelText: {
     fontSize: 15,
