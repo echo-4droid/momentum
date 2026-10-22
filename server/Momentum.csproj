@@ -16,7 +16,11 @@
   </ItemGroup>
   
   <Target Name="BuildClient" BeforeTargets="Build" Condition="'$(EnableBuildClient)' != 'false'">
-    <Exec Condition="!Exists('../client/node_modules')" Command="npm install" WorkingDirectory="../client" />
+    <!-- npm ci обязателен, когда хэш package-lock.json не совпадает с установленным деревом
+         (штамп .momentum-lock-stamp пишется после успешной установки). Даты ненадёжны:
+         восстановленный из кэша node_modules новее свежего lockfile. -->
+    <Exec Command="node -e &quot;const fs=require('fs'),c=require('crypto');const h=c.createHash('sha256').update(fs.readFileSync('package-lock.json')).digest('hex');const s='node_modules/.momentum-lock-stamp';if(fs.existsSync(s)&amp;&amp;fs.readFileSync(s,'utf8')===h){process.exit(0)}console.log('lockfile изменился — npm ci…');fs.rmSync('node_modules',{recursive:true,force:true});require('child_process').execSync('npm ci',{stdio:'inherit'});fs.writeFileSync(s,h)&quot;"
+          WorkingDirectory="../client" />
     <Exec Command="npm run export:web" WorkingDirectory="../client" />
     <ItemGroup>
       <_ClientDist Include="../client/dist/**/*" />
