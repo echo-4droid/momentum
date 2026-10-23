@@ -420,11 +420,27 @@ function FileCard({ file }: { file: FilePayload }) {
         <Text style={u.fileSize}>{formatBytes(size)}</Text>
       </View>
       <Pressable
-        onPress={() => {
-          const bytes = bytesFromBase64(file.data);
-          const url = URL.createObjectURL(
-            new Blob([asBufferSource(bytes)], { type: file.mime || 'application/octet-stream' }),
-          );
+        onPress={async () => {
+          const blob = new Blob([asBufferSource(bytesFromBase64(file.data))], {
+            type: file.mime || 'application/octet-stream',
+          });
+          // Атрибут download iOS Safari не поддерживает.
+          const shareFile = new File([blob], file.name, { type: blob.type });
+          const isIOS =
+            /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+          if (isIOS && navigator.canShare?.({ files: [shareFile] })) {
+            await navigator.share({ files: [shareFile] }).catch(() => {});
+            return;
+          }
+          const url = URL.createObjectURL(blob);
+          if (isIOS) {
+            // Старый iOS (< 15): без вьювера (octet-stream) файл не открыть,
+            // программного сохранения там не существует.
+            window.open(url, '_blank');
+            setTimeout(() => URL.revokeObjectURL(url), 60_000);
+            return;
+          }
           const anchor = document.createElement('a');
           anchor.href = url;
           anchor.download = file.name;
