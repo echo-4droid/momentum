@@ -2,7 +2,6 @@ import { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { createSecret } from './api';
-import { BASE_PATH } from './config';
 import { bytesToBase64, encodeLinkKey } from './base64';
 import {
   CryptoError,
@@ -115,8 +114,8 @@ export default function CreateScreen() {
       const id = await createSecret(blob, settings.ttlMinutes, settings.oneTime);
       const link =
         secret instanceof Uint8Array
-          ? `${window.location.origin}${BASE_PATH}/s/${id}#${encodeLinkKey(secret)}`
-          : `${window.location.origin}${BASE_PATH}/s/${id}`;
+          ? `${window.location.origin}/s/${id}#${encodeLinkKey(secret)}`
+          : `${window.location.origin}/s/${id}`;
       setCreated({ link, passphrase });
     } catch (e) {
       setError(e instanceof CryptoError ? cryptoErrorMessage(e) : 'Не удалось создать секрет. Попробуйте ещё раз.');

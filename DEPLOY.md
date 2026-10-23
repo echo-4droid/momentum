@@ -1,7 +1,6 @@
 # DEPLOY — развёртывание momentum на Ubuntu VPS
 
 Схема: **nginx (TLS) → systemd → Kestrel 127.0.0.1:8080 → LiteDB**. .NET и БД на сервере не нужны — деплоится self-contained пакет.
-Префикс `/momentum` задаётся в двух местах и должен совпадать: `EXPO_PUBLIC_BASE_PATH` при сборке клиента (шаг 1) и `X-Forwarded-Prefix` в nginx (шаг 4). Сборочный префикс middleware не заменяет — он зашит в ссылки и пути ассетов статического бандла. Для деплоя в корень — ни то, ни другое.
 
 Рекомендации по схеме размещения (отдельный поддомен, HSTS preload, бэкапы `data/`): [README.md](README.md#рекомендации-по-развёртыванию).
 
@@ -11,7 +10,7 @@
 
 ```bash
 cd server
-EXPO_PUBLIC_BASE_PATH=/momentum dotnet publish Momentum.csproj /p:PublishProfile=linux-x64
+dotnet publish Momentum.csproj /p:PublishProfile=linux-x64
 ```
 
 Результат: `server/publish/` — бинарник `Momentum` + `wwwroot/` (клиент собирается таргетом `BuildClient`), без нативных библиотек.
@@ -111,15 +110,12 @@ server {
     # для инлайн-сброса стилей Expo.
     add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
 
-    location = /momentum { return 301 /momentum/; }
-    location /momentum/ {
-        proxy_pass         http://127.0.0.1:8080/;
+    location / {
+        proxy_pass         http://127.0.0.1:8080;
         proxy_set_header   Host $host;
         proxy_set_header   X-Forwarded-For $remote_addr;
         proxy_set_header   X-Forwarded-Proto $scheme;
-        proxy_set_header   X-Forwarded-Prefix /momentum;
     }
-    location / { return 404; }
 }
 ```
 
@@ -136,8 +132,8 @@ sudo certbot --nginx -d momentum.example
 ## 5. Проверка
 
 ```bash
-curl -fsS https://momentum.example/momentum/ -o /dev/null && echo "статика OK"
-curl -fsS https://momentum.example/momentum/s/x -o /dev/null && echo "SPA OK"
+curl -fsS https://momentum.example/ -o /dev/null && echo "статика OK"
+curl -fsS https://momentum.example/s/x -o /dev/null && echo "SPA OK"
 sudo journalctl -u momentum --since -5min   # пусто = хорошо: сервис пишет только ошибки
 ```
 

@@ -1,16 +1,14 @@
 import { View, Text, StyleSheet } from 'react-native';
 
 import CreateScreen from './src/CreateScreen';
-import { BASE_PATH } from './src/config';
 import ReadScreen from './src/ReadScreen';
 
 /**
  * Навигации нет: экран выбирается по window.location.pathname.
- * "" и "/" (без базового пути деплоя) — создание секрета, "/s/<id>" — чтение.
+ * "" и "/" — создание секрета, "/s/<id>" — чтение.
  */
 export default function App() {
-  const raw = typeof window !== 'undefined' ? window.location.pathname : '/';
-  const path = BASE_PATH !== '' && raw.startsWith(BASE_PATH) ? raw.slice(BASE_PATH.length) || '/' : raw;
+  const path = typeof window !== 'undefined' ? window.location.pathname : '/';
   const match = /^\/s\/([^/]+)\/?$/.exec(path);
   if (match) {
     return <ReadScreen id={match[1] as string} />;
