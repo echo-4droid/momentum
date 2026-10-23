@@ -19,7 +19,7 @@
 - Фраза: генерируется клиентом из EFF large (7776), число слов выбирает создатель — 6–10 (по умолчанию 8 ≈ 103.4 бита), разделитель «-»; CSPRNG с reject-семплированием; свободный ввод у отправителя отсутствует, получатель вводит слова на странице чтения; ввод нормализуется (trim → NFKC → UTF-8) перед KDF.
 - KDF: Argon2id m = 65536 КиБ, t = 3, p = 1, salt 16 байт, ключ 32 байта; WASM, однопоточно, без COOP/COEP; ориентир ≤ 2–3 с на средних мобильных.
 - Шифр: AES-256-GCM (WebCrypto), nonce 12 байт, тег 16 байт в конце; AAD = заголовок конверта.
-- Конверт: magic `MOMO` (4 б) | version (1 б) | alg_id (1 б) | m_kib (u32 LE) | t | p | salt_len | nonce_len | salt | nonce | ciphertext‖tag. Заголовок до шифротекста — 42 байта; побайтовая таблица в [idea.md](../../idea.md).
+- Конверт: magic `MOMO` (4 б) | version (1 б) | alg_id (1 б) | m_kib (u32 LE) | t | p | salt_len | nonce_len | salt | nonce | ciphertext‖tag. Заголовок до шифротекста — 42 байта; побайтовая таблица в [idea.md](../idea.md).
 - Режимы: alg_id 0x02 — «ключ в ссылке» (по умолчанию): ключ 32 байта CSPRNG в URL-фрагменте (браузер его на сервер не отправляет), в заголовке m/t/p = 0, salt — случайный неиспользуемый; alg_id 0x01 — фраза + Argon2id. Layout одинаков, блобы неразличимы по форме; AAD покрывает alg_id — режимы взаимно не подменяемы.
 - Версии: version маппится на зарегистрированный набор параметров с валидацией; новые дефолты только новой версией (+1, без переиспользования), reader поддерживает все старые, writer пишет последнюю; сервер, API и формат ссылки от версий не зависят.
 
@@ -37,9 +37,7 @@
 
 ## Развёртывание и эксплуатация
 
-- Сборка клиента вшита в сборку сервера (MSBuild-таргет `BuildClient` в `Momentum.csproj`): сборка сервера сверяет SHA-256 `package-lock.json` со штампом последней установки в `node_modules` — при несовпадении выполняется `npm ci` → `expo export --platform web` → копирование `client/dist` в `wwwroot`. Отключить: `-p:EnableBuildClient=false`. Сборке требуется SDK 10.0.113+ из диапазона 10.0.1xx — `global.json` (rollForward: patch); более старый или другой диапазон дают ошибку сборки (патчи рантайма и Kestrel попадают в self-contained бинарник только при пересборке — пересобирать после каждого Patch Tuesday).
+- Сборка клиента вшита в сборку сервера (MSBuild-таргет `BuildClient` в `Momentum.csproj`): сборка сервера сверяет SHA-256 `package-lock.json` со штампом последней установки в `node_modules` — при несовпадении выполняется `npm ci` → `expo export --platform web` → копирование `client/dist` в `wwwroot`. Отключить: `-p:EnableBuildClient=false`.
+- Разработка и публикация: команды — в [README.md](../../README.md), пошаговое ручное развёртывание — в [DEPLOY.md](../../DEPLOY.md).
 
-- Разработка: открыть `momentum.slnx` (в корне репо) в Rider → Run (F5) по профилю Momentum — клиент и сервер одной кнопкой, сервер на `127.0.0.1:8080`, браузер открывается автоматически. CLI: `dotnet run --project server/Momentum.csproj`.
-- Публикация self-contained: `cd server && dotnet publish Momentum.csproj /p:PublishProfile=linux-x64` (или Publish в Rider с профилем linux-x64) → `server/publish/`. Важно: указывать путь к csproj — без него из `server/` dotnet подхватит солюшен `momentum.slnx` и опубликует и тестовый проект.
-
-Пакет = один бинарник ~97 МиБ + `wwwroot/`, нативных библиотек нет: на VPS не нужны SDK, .NET-runtime и внешние БД — только nginx и TLS-сертификат. Пошаговое ручное развёртывание (systemd, nginx, TLS, файрвол, обновление): [DEPLOY.md](../../DEPLOY.md). TLS-терминация на nginx (пример: [deploy/nginx.conf.example](../deploy/nginx.conf.example)), Kestrel слушает только на localhost — портов наружу нет. Access-логи выключены, рейт-лимиты в памяти. Криптосхема и модель безопасности: [idea.md](../../idea.md).
+Пакет = один бинарник ~97 МиБ + `wwwroot/`, нативных библиотек нет: на VPS не нужны SDK, .NET-runtime и внешние БД — только nginx и TLS-сертификат. TLS-терминация на nginx (пример: [deploy/nginx.conf.example](../../deploy/nginx.conf.example)), Kestrel слушает только на localhost — портов наружу нет. Access-логи выключены, рейт-лимиты в памяти. Криптосхема и модель безопасности: [idea.md](../idea.md).

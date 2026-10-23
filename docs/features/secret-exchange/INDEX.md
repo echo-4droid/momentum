@@ -30,7 +30,7 @@ MVP реализован (сервер + клиент + сборка). E2E пр�
 
 ## Затрагиваемые части
 
-`client/` — Expo web (криптомодуль `src/crypto.ts`, экраны Create/Read, API). `server/` — ASP.NET Core Minimal API, слои: `Api/` (`VaultEndpoints` — HTTP-обработчики; маршруты в `Program.cs`), `Domain/` (`VaultService` — правила TTL/id/размера), `Infrastructure/` (`VaultStore` — LiteDB, фоновая чистка), `Installers/` (типизированный конфиг `MomentumOptions`/`VaultOptions`/`RateLimiterLimits`, DI, конвейер), `Constants/`, точка сборки `Program.cs`, тесты. Стык клиент→сервер: `client/dist` → `server/wwwroot` (команды в [архитектуре](../../architecture/INDEX.md)). `deploy/nginx.conf.example` — прод-прокси.
+`client/` — Expo web (криптомодуль `src/crypto.ts`, экраны Create/Read, API). `server/` — ASP.NET Core Minimal API, слои: `Api/` (`VaultEndpoints` — HTTP-обработчики; маршруты в `Program.cs`), `Domain/` (`VaultService` — правила TTL/id/размера), `Infrastructure/` (`VaultStore` — LiteDB, фоновая чистка), `Installers/` (типизированный конфиг `MomentumOptions`/`VaultOptions`/`RateLimiterLimits`, DI, конвейер), `Constants/`, точка сборки `Program.cs`, тесты. Стык клиент→сервер: `client/dist` → `server/wwwroot` (команды в [DEPLOY.md](../../../DEPLOY.md)). `deploy/nginx.conf.example` — прод-прокси.
 
 ## Зависимости и ограничения
 
