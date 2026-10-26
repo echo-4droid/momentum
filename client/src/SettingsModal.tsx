@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { DEFAULT_WORDS, generatePassphrase, MAX_WORDS, MIN_WORDS, WORD_ENTROPY_BITS } from './crypto';
+import { t } from './l10n';
 import { colors, Segmented, styles as u,
   pressed,
 } from './ui';
@@ -28,33 +29,33 @@ export interface Settings {
 }
 
 export const TTL_OPTIONS = [
-  { label: '1 час', minutes: 60 },
-  { label: '24 часа', minutes: 1440 },
-  { label: '7 дней', minutes: 10080 },
+  { label: t.settings.ttlLabels.hour1, minutes: 60 },
+  { label: t.settings.ttlLabels.hours24, minutes: 1440 },
+  { label: t.settings.ttlLabels.days7, minutes: 10080 },
 ] as const;
 
 export const HIDE_OPTIONS = [
-  { label: 'Выкл', seconds: 0 },
-  { label: '15 с', seconds: 15 },
-  { label: '30 с', seconds: 30 },
-  { label: '60 с', seconds: 60 },
+  { label: t.settings.off, seconds: 0 },
+  { label: t.settings.hideLabels.s15, seconds: 15 },
+  { label: t.settings.hideLabels.s30, seconds: 30 },
+  { label: t.settings.hideLabels.s60, seconds: 60 },
 ] as const;
 
 export const DESTROY_OPTIONS = [
-  { label: 'Выкл', minutes: 0 },
-  { label: '5 мин', minutes: 5 },
-  { label: '10 мин', minutes: 10 },
-  { label: '30 мин', minutes: 30 },
+  { label: t.settings.off, minutes: 0 },
+  { label: t.settings.destroyLabels.m5, minutes: 5 },
+  { label: t.settings.destroyLabels.m10, minutes: 10 },
+  { label: t.settings.destroyLabels.m30, minutes: 30 },
 ] as const;
 
 const MODE_OPTIONS = [
-  { value: 'phrase' as const, label: 'Фраза отдельно' },
-  { value: 'link' as const, label: 'Ключ в ссылке' },
+  { value: 'phrase' as const, label: t.settings.modePhrase },
+  { value: 'link' as const, label: t.settings.modeLink },
 ];
 
 export const MODE_LABEL: Record<TransferMode, string> = {
-  phrase: 'Фраза отдельно',
-  link: 'Ключ в ссылке',
+  phrase: t.settings.modePhrase,
+  link: t.settings.modeLink,
 };
 
 const WORD_COUNTS = Array.from(
@@ -92,13 +93,13 @@ export function SettingsModal({
         <View style={s.panel}>
           <ScrollView style={s.panelBody} bounces={false} contentContainerStyle={s.panelContent}>
             <View style={s.panelHead}>
-              <Text style={s.panelTitle}>Настройки секрета</Text>
+              <Text style={s.panelTitle}>{t.settings.title}</Text>
               <Pressable style={pressed()} onPress={onClose} hitSlop={8}>
                 <Text style={s.remove}>✕</Text>
               </Pressable>
             </View>
 
-          <Text style={u.label}>Срок хранения</Text>
+          <Text style={u.label}>{t.settings.ttl}</Text>
           <Segmented
             options={TTL_OPTIONS.map((o) => ({ value: o.minutes, label: o.label }))}
             value={draft.ttlMinutes}
@@ -109,37 +110,34 @@ export function SettingsModal({
             <View style={[s.checkbox, draft.oneTime && s.checkboxOn]}>
               {draft.oneTime ? <Text style={s.checkMark}>✓</Text> : null}
             </View>
-            <Text style={s.checkLabel}>Удалить после первого открытия</Text>
+            <Text style={s.checkLabel}>{t.settings.oneTime}</Text>
           </Pressable>
 
-          <Text style={[u.label, s.section]}>Скрыть содержимое через</Text>
+          <Text style={[u.label, s.section]}>{t.settings.hideAfter}</Text>
           <Segmented
             options={HIDE_OPTIONS.map((o) => ({ value: o.seconds, label: o.label }))}
             value={draft.hideSeconds}
             onChange={(hideSeconds) => setDraft({ ...draft, hideSeconds })}
           />
 
-          <Text style={[u.label, s.section]}>Удалить со страницы через</Text>
+          <Text style={[u.label, s.section]}>{t.settings.destroyAfter}</Text>
           <Segmented
             options={DESTROY_OPTIONS.map((o) => ({ value: o.minutes, label: o.label }))}
             value={draft.destroyMinutes}
             onChange={(destroyMinutes) => setDraft({ ...draft, destroyMinutes })}
           />
-          <Text style={[u.hint, s.timerHint]}>
-            Оба таймера запускаются у получателя после расшифровки: скрытие прячет содержимое
-            шумом, удаление убирает его с этой страницы.
-          </Text>
+          <Text style={[u.hint, s.timerHint]}>{t.settings.timersHint}</Text>
 
-          <Text style={[u.label, s.section]}>Передача ключа</Text>
+          <Text style={[u.label, s.section]}>{t.settings.transfer}</Text>
           <Segmented options={MODE_OPTIONS} value={draft.mode} onChange={(mode) => setDraft({ ...draft, mode })} />
 
           {draft.mode === 'phrase' ? (
             <>
-              <Text style={[u.label, s.section]}>Фраза</Text>
+              <Text style={[u.label, s.section]}>{t.common.passphrase}</Text>
               <View style={[u.field, s.phraseBox]}>
                 <Text style={[u.mono, s.phraseText]}>{draft.passphrase}</Text>
               </View>
-              <Text style={[u.label, s.section]}>Слов во фразе</Text>
+              <Text style={[u.label, s.section]}>{t.settings.words}</Text>
               <Segmented
                 options={WORD_COUNTS.map((n) => ({ value: n, label: String(n) }))}
                 value={draft.passphraseWords}
@@ -153,9 +151,9 @@ export function SettingsModal({
                   onPress={() => setDraft({ ...draft, passphrase: generatePassphrase(draft.passphraseWords) })}
                   hitSlop={6}
                 >
-                  <Text style={u.link}>Новая фраза</Text>
+                  <Text style={u.link}>{t.settings.newPassphrase}</Text>
                 </Pressable>
-                <Text style={u.hint}>≈ {Math.round(draft.passphraseWords * WORD_ENTROPY_BITS)} бит</Text>
+                <Text style={u.hint}>{t.units.bits(Math.round(draft.passphraseWords * WORD_ENTROPY_BITS))}</Text>
               </View>
             </>
           ) : null}
@@ -163,10 +161,10 @@ export function SettingsModal({
 
           <View style={s.panelFooter}>
             <Pressable style={pressed()} onPress={onClose} hitSlop={8}>
-              <Text style={s.cancelText}>Отмена</Text>
+              <Text style={s.cancelText}>{t.settings.cancel}</Text>
             </Pressable>
             <Pressable style={pressed([u.primary, s.saveButton])} onPress={() => onSave(draft)}>
-              <Text style={u.primaryText}>Сохранить</Text>
+              <Text style={u.primaryText}>{t.settings.save}</Text>
             </Pressable>
           </View>
         </View>

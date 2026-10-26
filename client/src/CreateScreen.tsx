@@ -3,6 +3,7 @@ import { ActivityIndicator, Animated, Pressable, ScrollView, StyleSheet, Text, T
 
 import { createSecret } from './api';
 import { bytesToBase64, encodeLinkKey } from './base64';
+import { t } from './l10n';
 import {
   CryptoError,
   encrypt,
@@ -78,7 +79,7 @@ export default function CreateScreen() {
 
   function pickFile(domFile: File): void {
     if (domFile.size > MAX_FILE_BYTES) {
-      setError('Файл больше 5 МБ.');
+      setError(t.create.errors.fileTooLarge);
       return;
     }
     const reader = new FileReader();
@@ -91,7 +92,7 @@ export default function CreateScreen() {
       });
       setError(null);
     };
-    reader.onerror = () => setError('Не удалось прочитать файл.');
+    reader.onerror = () => setError(t.create.errors.fileReadFailed);
     reader.readAsArrayBuffer(domFile);
   }
 
@@ -154,7 +155,7 @@ export default function CreateScreen() {
   async function handleCreate(): Promise<void> {
     setError(null);
     if (!text.trim() && !file) {
-      setError('Введите сообщение или прикрепите файл.');
+      setError(t.create.errors.empty);
       return;
     }
     setBusy(true);
@@ -188,7 +189,7 @@ export default function CreateScreen() {
           : `${window.location.origin}/s/${id}`;
       setCreated({ link, passphrase });
     } catch (e) {
-      setError(e instanceof CryptoError ? cryptoErrorMessage(e) : 'Не удалось создать секрет. Попробуйте ещё раз.');
+      setError(e instanceof CryptoError ? cryptoErrorMessage(e) : t.create.errors.generic);
     } finally {
       setBusy(false);
     }
@@ -209,9 +210,9 @@ export default function CreateScreen() {
         <FadeIn>
           <View style={u.content}>
           <Text style={u.logo}>momentum</Text>
-          <Text style={u.h1}>Ссылка готова</Text>
+          <Text style={u.h1}>{t.create.ready}</Text>
 
-          <Text style={u.label}>Ссылка</Text>
+          <Text style={u.label}>{t.create.link}</Text>
           <View style={[s.copyField, copiedField === 'link' && s.flashField]}>
             <Text style={[u.mono, s.copyValue]} numberOfLines={1}>
               {created.link.replace(/^https?:\/\//, '')}
@@ -222,7 +223,7 @@ export default function CreateScreen() {
 
           {created.passphrase ? (
             <>
-              <Text style={[u.label, s.section]}>Фраза</Text>
+              <Text style={[u.label, s.section]}>{t.common.passphrase}</Text>
               <View style={[s.copyField, copiedField === 'pass' && s.flashField]}>
                 <Text style={[u.mono, s.copyValue]} numberOfLines={1}>
                   {created.passphrase}
@@ -230,19 +231,14 @@ export default function CreateScreen() {
                 <View style={s.copyDivider} />
                 <CopyLink value={created.passphrase} onCopied={() => flashCopy('pass')} />
               </View>
-              <Text style={[u.hint, s.section]}>
-                Передайте фразу другим каналом — не вместе со ссылкой.
-              </Text>
+              <Text style={[u.hint, s.section]}>{t.create.passphraseHint}</Text>
             </>
           ) : (
-            <Text style={[u.hint, s.section]}>
-              Ключ встроен в ссылку: секрет прочитает любой, у кого она окажется, — включая
-              мессенджер, облачную синхронизацию и буфер обмена.
-            </Text>
+            <Text style={[u.hint, s.section]}>{t.create.linkKeyHint}</Text>
           )}
 
           <Pressable style={pressed(s.more)} onPress={handleReset} hitSlop={8}>
-            <Text style={u.link}>Создать ещё</Text>
+            <Text style={u.link}>{t.create.createMore}</Text>
           </Pressable>
         </View>
         </FadeIn>
@@ -255,7 +251,7 @@ export default function CreateScreen() {
   return (
     <ScrollView style={u.root} contentContainerStyle={u.content} keyboardShouldPersistTaps="handled">
       <Text style={u.logo}>momentum</Text>
-      <Text style={u.h1}>Создать секрет</Text>
+      <Text style={u.h1}>{t.create.title}</Text>
 
       <View style={[u.card, dragOver && s.dragOverCard]}>
         <TextInput
@@ -264,7 +260,7 @@ export default function CreateScreen() {
           value={text}
           maxLength={MAX_TEXT_CHARS}
           onChangeText={setText}
-          placeholder="Сообщение"
+          placeholder={t.create.messagePlaceholder}
           placeholderTextColor={colors.faint}
         />
         <Animated.View style={{ opacity: fileOpacity }}>
@@ -283,8 +279,8 @@ export default function CreateScreen() {
             </View>
           ) : (
             <Pressable style={pressed(s.fileRow)} onPress={openFilePicker}>
-              <Text style={u.link}>Прикрепить файл</Text>
-              <Text style={[u.hint, s.attachHint]}>до 5 МБ, необязательно; можно Ctrl+V или перетащить</Text>
+              <Text style={u.link}>{t.create.attach}</Text>
+              <Text style={[u.hint, s.attachHint]}>{t.create.attachHint}</Text>
             </Pressable>
           )}
         </Animated.View>
@@ -293,11 +289,11 @@ export default function CreateScreen() {
       <View style={s.summary}>
         <Text style={u.hint}>{ttlLabel}</Text>
         <Text style={s.dot}>•</Text>
-        <Text style={u.hint}>{settings.oneTime ? 'Одно чтение' : 'Несколько чтений'}</Text>
+        <Text style={u.hint}>{settings.oneTime ? t.create.oneTime : t.create.multiRead}</Text>
         <Text style={s.dot}>•</Text>
         <Text style={u.hint}>{MODE_LABEL[settings.mode]}</Text>
         <Pressable style={pressed()} onPress={() => setSettingsOpen(true)} hitSlop={6}>
-          <Text style={u.link}>Изменить</Text>
+          <Text style={u.link}>{t.create.change}</Text>
         </Pressable>
       </View>
 
@@ -308,7 +304,7 @@ export default function CreateScreen() {
       >
         <View style={s.submitInner}>
           {busy ? <ActivityIndicator size="small" color={colors.white} /> : null}
-          <Text style={u.primaryText}>{busy ? 'Шифруем…' : 'Создать секрет'}</Text>
+          <Text style={u.primaryText}>{busy ? t.create.submitting : t.create.submit}</Text>
         </View>
       </Pressable>
       {error ? (
@@ -334,15 +330,15 @@ export default function CreateScreen() {
 function cryptoErrorMessage(e: CryptoError): string {
   switch (e.message) {
     case 'TEXT_TOO_LONG':
-      return 'Текст длиннее 10 000 символов.';
+      return t.create.errors.textTooLong;
     case 'FILE_TOO_LARGE':
-      return 'Файл больше 5 МБ.';
+      return t.create.errors.fileTooLarge;
     case 'BLOB_TOO_LARGE':
-      return 'Секрет слишком большой.';
+      return t.create.errors.blobTooLarge;
     case 'EMPTY_PAYLOAD':
-      return 'Введите сообщение или прикрепите файл.';
+      return t.create.errors.empty;
     default:
-      return 'Не удалось создать секрет. Попробуйте ещё раз.';
+      return t.create.errors.generic;
   }
 }
 

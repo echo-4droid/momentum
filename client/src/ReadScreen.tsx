@@ -4,6 +4,7 @@ import { Animated, Pressable, StyleSheet, Text, TextInput, View } from 'react-na
 import { fetchSecretBlob, fetchSecretStatus } from './api';
 import { bytesFromBase64, decodeLinkKey } from './base64';
 import { asBufferSource, decrypt, type FilePayload, type Payload } from './crypto';
+import { t } from './l10n';
 import {
   colors,
   CopyLink,
@@ -129,8 +130,8 @@ export default function ReadScreen({ id }: { id: string }) {
     } catch (e) {
       setError(
         e instanceof Error && e.message === 'NOT_FOUND'
-          ? 'Секрет не найден: он уже прочитан или срок его действия истёк.'
-          : 'Не удалось расшифровать. Неверная фраза или данные повреждены.',
+          ? t.read.notFound
+          : t.read.decryptFailed,
       );
     } finally {
       setBusy(false);
@@ -143,7 +144,7 @@ export default function ReadScreen({ id }: { id: string }) {
       return;
     }
     if (!passphrase.trim()) {
-      setError('Введите фразу.');
+      setError(t.read.passphraseRequired);
       return;
     }
     await runDecrypt(passphrase);
@@ -151,7 +152,7 @@ export default function ReadScreen({ id }: { id: string }) {
 
   const openButton = (
     <Pressable style={[u.primary, busy && u.primaryDisabled]} onPress={handleOpen} disabled={busy}>
-      <Text style={u.primaryText}>{busy ? 'Открываем…' : 'Открыть'}</Text>
+      <Text style={u.primaryText}>{busy ? t.read.opening : t.read.open}</Text>
     </Pressable>
   );
 
@@ -164,37 +165,32 @@ export default function ReadScreen({ id }: { id: string }) {
     const parts: string[] = [];
     if (hideOn) {
       parts.push(
-        hideLeft !== null && hideLeft > 0
-          ? `Через ${hideLeft} с содержимое скроется — «Показать содержимое» вернёт его.`
-          : 'Содержимое скрыто — «Показать содержимое» вернёт его.',
+        hideLeft !== null && hideLeft > 0 ? t.read.hideHintIn(hideLeft) : t.read.hiddenHint(),
       );
     }
     if (destroyMin > 0) {
-      parts.push(`Через ${destroyMin} мин содержимое будет убрано с этой страницы и не вернётся в этом открытии.`);
+      parts.push(t.read.destroyHint(destroyMin));
     }
     if (parts.length === 0) {
-      parts.push('Сохраните нужное перед закрытием страницы.');
+      parts.push(t.read.saveHint);
     }
     return parts.join(' ');
   })();
   const burnWarning = (
-    <Text style={s.burnWarning}>Одноразовый секрет удалится при открытии.</Text>
+    <Text style={s.burnWarning}>{t.read.burnWarning}</Text>
   );
 
   return (
     <View style={u.root}>
       <View style={u.content}>
         <Text style={u.logo}>momentum</Text>
-        <Text style={u.h1}>{payload || destroyed ? 'Секрет' : 'Открыть секрет'}</Text>
+        <Text style={u.h1}>{payload || destroyed ? t.read.titleOpened : t.read.title}</Text>
 
         {destroyed ? (
           <FadeIn duration={350}>
             <View style={[u.card, s.goneCard]}>
-              <Text style={s.goneTitle}>Время показа истекло</Text>
-              <Text style={u.hint}>
-                Содержимое убрано с этой страницы. Если сервер ещё хранит секрет, обновление
-                страницы откроет его заново — таймеры начнут отсчёт сначала.
-              </Text>
+              <Text style={s.goneTitle}>{t.read.expiredTitle}</Text>
+              <Text style={u.hint}>{t.read.expiredHint}</Text>
             </View>
           </FadeIn>
         ) : payload ? (
@@ -220,12 +216,10 @@ export default function ReadScreen({ id }: { id: string }) {
             </FadeIn>
           )
         ) : unavailable ? (
-          <Text style={u.error}>
-            Секрет недоступен: он уже прочитан или срок его действия истёк.
-          </Text>
+          <Text style={u.error}>{t.read.unavailable}</Text>
         ) : linkKey.fromHash && !linkKey.key ? (
           // Битый фрагмент: даже не пробуем — GET сжёг бы одноразовый секрет впустую.
-          <Text style={u.error}>Ссылка неполная: в ней нет ключа расшифровки.</Text>
+          <Text style={u.error}>{t.read.incompleteLink}</Text>
         ) : linkKey.fromHash ? (
           <>
             {burnWarning}
@@ -234,7 +228,7 @@ export default function ReadScreen({ id }: { id: string }) {
           </>
         ) : (
           <>
-            <Text style={u.label}>Фраза</Text>
+            <Text style={u.label}>{t.common.passphrase}</Text>
             <TextInput
               style={[u.field, u.mono]}
               value={passphrase}
@@ -242,7 +236,7 @@ export default function ReadScreen({ id }: { id: string }) {
                 setPassphrase(value);
                 setError(null);
               }}
-              placeholder="Введите фразу"
+              placeholder={t.read.passphrasePlaceholder}
               placeholderTextColor={colors.faint}
               autoCapitalize="none"
               autoCorrect={false}
@@ -393,9 +387,9 @@ function NoiseVeil({
           style={[u.primary, s.veilButton]}
           onPress={onRequestClose}
           disabled={closing}
-          accessibilityLabel="Показать содержимое"
+          accessibilityLabel={t.read.showContent}
         >
-          <Text style={u.primaryText}>Показать содержимое</Text>
+          <Text style={u.primaryText}>{t.read.showContent}</Text>
         </Pressable>
       </View>
     </Animated.View>
@@ -448,7 +442,7 @@ function FileCard({ file }: { file: FilePayload }) {
           setTimeout(() => URL.revokeObjectURL(url), 5000);
         }}
       >
-        <Text style={u.link}>{done ? '✓' : 'Скачать'}</Text>
+        <Text style={u.link}>{done ? '✓' : t.read.download}</Text>
       </Pressable>
     </View>
   );

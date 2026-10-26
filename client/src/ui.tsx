@@ -14,6 +14,8 @@ import {
 } from 'react-native';
 import { useEffect, useRef, type ReactNode } from 'react';
 
+import { t } from './l10n';
+
 export const colors = {
   bg: '#f7f7f8',
   text: '#17171c',
@@ -183,7 +185,7 @@ export function FileBadge({ name }: { name: string }) {
 /** Текстовая ссылка «Копировать» рядом со своими данными; выполняет ровно одно копирование. */
 export function CopyLink({
   value,
-  label = 'Копировать',
+  label = t.common.copy,
   onCopied,
 }: {
   value: string;
@@ -206,7 +208,7 @@ export function CopyLink({
         }
       }}
     >
-      <Text style={styles.link}>{copied ? 'Скопировано' : label}</Text>
+      <Text style={styles.link}>{copied ? t.common.copied : label}</Text>
     </Pressable>
   );
 }
@@ -214,12 +216,12 @@ export function CopyLink({
 /** Размер вложения в человекочитаемом виде («1,2 МБ»), как в макетах. */
 export function formatBytes(size: number): string {
   if (size >= 1024 * 1024) {
-    return `${(size / (1024 * 1024)).toFixed(1).replace('.', ',')} МБ`;
+    return `${(size / (1024 * 1024)).toFixed(1).replace('.', ',')} ${t.units.mb}`;
   }
   if (size >= 1024) {
-    return `${Math.round(size / 1024)} КБ`;
+    return `${Math.round(size / 1024)} ${t.units.kb}`;
   }
-  return `${size} Б`;
+  return `${size} ${t.units.bytes}`;
 }
 
 /** Сегментный переключатель макета: рамка-контейнер, активный сегмент залит синим. */
