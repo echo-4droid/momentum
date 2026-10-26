@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { createSecret } from './api';
 import { bytesToBase64, encodeLinkKey } from './base64';
@@ -18,7 +18,7 @@ import {
   TTL_OPTIONS,
   type Settings,
 } from './SettingsModal';
-import { colors, CopyLink, FileBadge, formatBytes, styles as u } from './ui';
+import { colors, CopyLink, FadeIn, FileBadge, formatBytes, pressed, styles as u } from './ui';
 
 interface PickedFile {
   name: string;
@@ -42,6 +42,39 @@ export default function CreateScreen() {
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedSecret | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // Плавное появление/скрытие строки вложения и вспышка при её добавлении.
+  const fileOpacity = useRef(new Animated.Value(1)).current;
+  const [fileFlash, setFileFlash] = useState(false);
+  // Подсветка карточки, пока над страницей тащат файл.
+  const [dragOver, setDragOver] = useState(false);
+  const dragTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Вспышка поля, из которого только что скопировали данные.
+  const [copiedField, setCopiedField] = useState<'link' | 'pass' | null>(null);
+
+  function showFile(next: PickedFile): void {
+    setFile(next);
+    setFileFlash(true);
+    setTimeout(() => setFileFlash(false), 1200);
+    fileOpacity.setValue(0);
+    Animated.timing(fileOpacity, { toValue: 1, duration: 200, useNativeDriver: false }).start();
+  }
+
+  function hideFile(): void {
+    Animated.timing(fileOpacity, { toValue: 0, duration: 150, useNativeDriver: false }).start(
+      ({ finished }) => {
+        if (finished) {
+          setFile(null);
+          fileOpacity.setValue(0);
+          Animated.timing(fileOpacity, { toValue: 1, duration: 200, useNativeDriver: false }).start();
+        }
+      },
+    );
+  }
+
+  function flashCopy(which: 'link' | 'pass'): void {
+    setCopiedField(which);
+    setTimeout(() => setCopiedField(null), 1200);
+  }
 
   function pickFile(domFile: File): void {
     if (domFile.size > MAX_FILE_BYTES) {
@@ -50,7 +83,7 @@ export default function CreateScreen() {
     }
     const reader = new FileReader();
     reader.onload = () => {
-      setFile({
+      showFile({
         name: domFile.name,
         mime: domFile.type || 'application/octet-stream',
         data: bytesToBase64(new Uint8Array(reader.result as ArrayBuffer)),
@@ -61,6 +94,43 @@ export default function CreateScreen() {
     reader.onerror = () => setError('Не удалось прочитать файл.');
     reader.readAsArrayBuffer(domFile);
   }
+
+  // Ctrl+V и drag-and-drop файла в любое место страницы. pickFile читает только
+  // аргумент и сеттеры — пересоздание подписки нужно лишь для экрана «ссылка готова».
+  useEffect(() => {
+    if (created) return;
+    const takeFiles = (list: FileList | null | undefined): boolean => {
+      const domFile = list?.[0];
+      if (!domFile) return false;
+      pickFile(domFile);
+      return true;
+    };
+    const onPaste = (e: ClipboardEvent) => {
+      if (takeFiles(e.clipboardData?.files)) e.preventDefault();
+    };
+    const onDragOver = (e: DragEvent) => {
+      // types в старых Safari — DOMStringList без includes.
+      if (!Array.from(e.dataTransfer?.types ?? []).includes('Files')) return;
+      e.preventDefault();
+      setDragOver(true);
+      if (dragTimer.current) clearTimeout(dragTimer.current);
+      // dragleave шумит на дочерних элементах — гасим подсветку по таймауту.
+      dragTimer.current = setTimeout(() => setDragOver(false), 400);
+    };
+    const onDrop = (e: DragEvent) => {
+      if (dragTimer.current) clearTimeout(dragTimer.current);
+      setDragOver(false);
+      if (takeFiles(e.dataTransfer?.files)) e.preventDefault();
+    };
+    document.addEventListener('paste', onPaste);
+    document.addEventListener('dragover', onDragOver);
+    document.addEventListener('drop', onDrop);
+    return () => {
+      document.removeEventListener('paste', onPaste);
+      document.removeEventListener('dragover', onDragOver);
+      document.removeEventListener('drop', onDrop);
+    };
+  }, [created]);
 
   function openFilePicker(): void {
     // react-native-web не имеет файлового пикера — открываем DOM-инпут.
@@ -136,28 +206,29 @@ export default function CreateScreen() {
   if (created) {
     return (
       <View style={u.root}>
-        <View style={u.content}>
+        <FadeIn>
+          <View style={u.content}>
           <Text style={u.logo}>momentum</Text>
           <Text style={u.h1}>Ссылка готова</Text>
 
           <Text style={u.label}>Ссылка</Text>
-          <View style={s.copyField}>
+          <View style={[s.copyField, copiedField === 'link' && s.flashField]}>
             <Text style={[u.mono, s.copyValue]} numberOfLines={1}>
               {created.link.replace(/^https?:\/\//, '')}
             </Text>
             <View style={s.copyDivider} />
-            <CopyLink value={created.link} />
+            <CopyLink value={created.link} onCopied={() => flashCopy('link')} />
           </View>
 
           {created.passphrase ? (
             <>
               <Text style={[u.label, s.section]}>Фраза</Text>
-              <View style={s.copyField}>
+              <View style={[s.copyField, copiedField === 'pass' && s.flashField]}>
                 <Text style={[u.mono, s.copyValue]} numberOfLines={1}>
                   {created.passphrase}
                 </Text>
                 <View style={s.copyDivider} />
-                <CopyLink value={created.passphrase} />
+                <CopyLink value={created.passphrase} onCopied={() => flashCopy('pass')} />
               </View>
               <Text style={[u.hint, s.section]}>
                 Передайте фразу другим каналом — не вместе со ссылкой.
@@ -170,10 +241,11 @@ export default function CreateScreen() {
             </Text>
           )}
 
-          <Pressable style={s.more} onPress={handleReset} hitSlop={8}>
+          <Pressable style={pressed(s.more)} onPress={handleReset} hitSlop={8}>
             <Text style={u.link}>Создать ещё</Text>
           </Pressable>
         </View>
+        </FadeIn>
       </View>
     );
   }
@@ -185,7 +257,7 @@ export default function CreateScreen() {
       <Text style={u.logo}>momentum</Text>
       <Text style={u.h1}>Создать секрет</Text>
 
-      <View style={u.card}>
+      <View style={[u.card, dragOver && s.dragOverCard]}>
         <TextInput
           style={s.textarea}
           multiline
@@ -195,25 +267,27 @@ export default function CreateScreen() {
           placeholder="Сообщение"
           placeholderTextColor={colors.faint}
         />
-        {file ? (
-          <View style={s.fileRow}>
-            <FileBadge name={file.name} />
-            <View style={u.fileMeta}>
-              <Text style={u.fileName} numberOfLines={1}>
-                {file.name}
-              </Text>
-              <Text style={u.fileSize}>{formatBytes(file.size)}</Text>
+        <Animated.View style={{ opacity: fileOpacity }}>
+          {file ? (
+            <View style={[s.fileRow, fileFlash && s.flashRow]}>
+              <FileBadge name={file.name} />
+              <View style={u.fileMeta}>
+                <Text style={u.fileName} numberOfLines={1}>
+                  {file.name}
+                </Text>
+                <Text style={u.fileSize}>{formatBytes(file.size)}</Text>
+              </View>
+              <Pressable onPress={hideFile} hitSlop={8} style={pressed()}>
+                <Text style={s.remove}>✕</Text>
+              </Pressable>
             </View>
-            <Pressable onPress={() => setFile(null)} hitSlop={8}>
-              <Text style={s.remove}>✕</Text>
+          ) : (
+            <Pressable style={pressed(s.fileRow)} onPress={openFilePicker}>
+              <Text style={u.link}>Прикрепить файл</Text>
+              <Text style={[u.hint, s.attachHint]}>до 5 МБ, необязательно; можно Ctrl+V или перетащить</Text>
             </Pressable>
-          </View>
-        ) : (
-          <Pressable style={s.fileRow} onPress={openFilePicker}>
-            <Text style={u.link}>Прикрепить файл</Text>
-            <Text style={[u.hint, s.attachHint]}>до 5 МБ, необязательно</Text>
-          </Pressable>
-        )}
+          )}
+        </Animated.View>
       </View>
 
       <View style={s.summary}>
@@ -222,19 +296,26 @@ export default function CreateScreen() {
         <Text style={u.hint}>{settings.oneTime ? 'Одно чтение' : 'Несколько чтений'}</Text>
         <Text style={s.dot}>•</Text>
         <Text style={u.hint}>{MODE_LABEL[settings.mode]}</Text>
-        <Pressable onPress={() => setSettingsOpen(true)} hitSlop={6}>
+        <Pressable style={pressed()} onPress={() => setSettingsOpen(true)} hitSlop={6}>
           <Text style={u.link}>Изменить</Text>
         </Pressable>
       </View>
 
       <Pressable
-        style={[u.primary, s.submit, busy && u.primaryDisabled]}
+        style={pressed([u.primary, s.submit, busy && u.primaryDisabled])}
         onPress={handleCreate}
         disabled={busy}
       >
-        <Text style={u.primaryText}>{busy ? 'Шифруем…' : 'Создать секрет'}</Text>
+        <View style={s.submitInner}>
+          {busy ? <ActivityIndicator size="small" color={colors.white} /> : null}
+          <Text style={u.primaryText}>{busy ? 'Шифруем…' : 'Создать секрет'}</Text>
+        </View>
       </Pressable>
-      {error ? <Text style={u.error}>{error}</Text> : null}
+      {error ? (
+        <FadeIn duration={150} dy={8}>
+          <Text style={u.error}>{error}</Text>
+        </FadeIn>
+      ) : null}
 
       {settingsOpen ? (
         <SettingsModal
@@ -307,6 +388,23 @@ const s = StyleSheet.create({
   },
   submit: {
     marginTop: 0,
+  },
+  submitInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  dragOverCard: {
+    borderColor: colors.blue,
+  },
+  flashField: {
+    borderColor: colors.blue,
+    backgroundColor: '#eef4fe',
+  },
+  flashRow: {
+    borderTopColor: colors.blue,
+    backgroundColor: '#eef4fe',
   },
   section: {
     marginTop: 20,

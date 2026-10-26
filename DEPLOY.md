@@ -9,8 +9,7 @@
 ## 1. Собрать пакет (локально)
 
 ```bash
-cd server
-dotnet publish Momentum.csproj /p:PublishProfile=linux-x64
+cd server && dotnet publish Momentum.csproj /p:PublishProfile=linux-x64
 ```
 
 Результат: `server/publish/` — бинарник `Momentum` + `wwwroot/` (клиент собирается таргетом `BuildClient`), без нативных библиотек.

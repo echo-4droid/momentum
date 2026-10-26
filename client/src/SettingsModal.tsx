@@ -6,7 +6,9 @@ import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { DEFAULT_WORDS, generatePassphrase, MAX_WORDS, MIN_WORDS, WORD_ENTROPY_BITS } from './crypto';
-import { colors, Segmented, styles as u } from './ui';
+import { colors, Segmented, styles as u,
+  pressed,
+} from './ui';
 
 export type TransferMode = 'phrase' | 'link';
 
@@ -91,7 +93,7 @@ export function SettingsModal({
           <ScrollView style={s.panelBody} bounces={false} contentContainerStyle={s.panelContent}>
             <View style={s.panelHead}>
               <Text style={s.panelTitle}>Настройки секрета</Text>
-              <Pressable onPress={onClose} hitSlop={8}>
+              <Pressable style={pressed()} onPress={onClose} hitSlop={8}>
                 <Text style={s.remove}>✕</Text>
               </Pressable>
             </View>
@@ -103,7 +105,7 @@ export function SettingsModal({
             onChange={(ttlMinutes) => setDraft({ ...draft, ttlMinutes })}
           />
 
-          <Pressable style={s.checkRow} onPress={() => setDraft({ ...draft, oneTime: !draft.oneTime })}>
+          <Pressable style={pressed(s.checkRow)} onPress={() => setDraft({ ...draft, oneTime: !draft.oneTime })}>
             <View style={[s.checkbox, draft.oneTime && s.checkboxOn]}>
               {draft.oneTime ? <Text style={s.checkMark}>✓</Text> : null}
             </View>
@@ -147,6 +149,7 @@ export function SettingsModal({
               />
               <View style={s.phraseRow}>
                 <Pressable
+                  style={pressed()}
                   onPress={() => setDraft({ ...draft, passphrase: generatePassphrase(draft.passphraseWords) })}
                   hitSlop={6}
                 >
@@ -159,10 +162,10 @@ export function SettingsModal({
           </ScrollView>
 
           <View style={s.panelFooter}>
-            <Pressable onPress={onClose} hitSlop={8}>
+            <Pressable style={pressed()} onPress={onClose} hitSlop={8}>
               <Text style={s.cancelText}>Отмена</Text>
             </Pressable>
-            <Pressable style={[u.primary, s.saveButton]} onPress={() => onSave(draft)}>
+            <Pressable style={pressed([u.primary, s.saveButton])} onPress={() => onSave(draft)}>
               <Text style={u.primaryText}>Сохранить</Text>
             </Pressable>
           </View>

@@ -3,7 +3,16 @@
  * цвета, типографика, кнопка, поле, карточка, бейдж файла, ссылка «Копировать».
  */
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Animated,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
+import { useEffect, useRef, type ReactNode } from 'react';
 
 export const colors = {
   bg: '#f7f7f8',
@@ -128,6 +137,36 @@ export const styles = StyleSheet.create({
   },
 });
 
+/** Стиль-функция для Pressable: затемнение при нажатии поверх базовых стилей. */
+export function pressed(base?: StyleProp<ViewStyle>, opacity = 0.6) {
+  return (state: { pressed: boolean }) => [base, state.pressed && { opacity }];
+}
+
+/** Плавное появление: opacity 0→1, опционально с подъёмом на dy пикселей. */
+export function FadeIn({
+  duration = 300,
+  dy = 0,
+  children,
+}: {
+  duration?: number;
+  dy?: number;
+  children: ReactNode;
+}) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(dy)).current;
+  useEffect(() => {
+    const anim = Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration, useNativeDriver: false }),
+      Animated.timing(translateY, { toValue: 0, duration, useNativeDriver: false }),
+    ]);
+    anim.start();
+    return () => anim.stop();
+  }, [opacity, translateY, duration]);
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }] }}>{children}</Animated.View>
+  );
+}
+
 /** Иконка вложения: скруглённый квадрат с расширением файла (PDF — красный, как в макете). */
 export function FileBadge({ name }: { name: string }) {
   const ext = name.includes('.') ? (name.split('.').pop() ?? '') : '';
@@ -142,15 +181,25 @@ export function FileBadge({ name }: { name: string }) {
 }
 
 /** Текстовая ссылка «Копировать» рядом со своими данными; выполняет ровно одно копирование. */
-export function CopyLink({ value, label = 'Копировать' }: { value: string; label?: string }) {
+export function CopyLink({
+  value,
+  label = 'Копировать',
+  onCopied,
+}: {
+  value: string;
+  label?: string;
+  onCopied?: () => void;
+}) {
   const [copied, setCopied] = useState(false);
   return (
     <Pressable
       hitSlop={8}
+      style={pressed()}
       onPress={async () => {
         try {
           await navigator.clipboard.writeText(value);
           setCopied(true);
+          onCopied?.();
           setTimeout(() => setCopied(false), 1500);
         } catch {
           // Нет доступа к clipboard — остаётся ручное копирование.
@@ -188,7 +237,7 @@ export function Segmented<T extends string | number>({
       {options.map((option) => (
         <Pressable
           key={option.value}
-          style={[s.segment, value === option.value && s.segmentActive]}
+          style={pressed([s.segment, value === option.value && s.segmentActive], 0.5)}
           onPress={() => onChange(option.value)}
         >
           <Text

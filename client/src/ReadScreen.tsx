@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { fetchSecretBlob, fetchSecretStatus } from './api';
@@ -7,8 +7,10 @@ import { asBufferSource, decrypt, type FilePayload, type Payload } from './crypt
 import {
   colors,
   CopyLink,
+  FadeIn,
   FileBadge,
   formatBytes,
+  pressed,
   styles as u,
 } from './ui';
 
@@ -268,17 +270,6 @@ const NOISE_LAYERS = [
   { count: 160, size: 2.8, speed: 23, alpha: 0.75, angleDeg: 2 },
 ];
 
-/** Плавное появление: opacity 0→1 за duration мс. */
-function FadeIn({ duration = 300, children }: { duration?: number; children: ReactNode }) {
-  const opacity = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const anim = Animated.timing(opacity, { toValue: 1, duration, useNativeDriver: false });
-    anim.start();
-    return () => anim.stop();
-  }, [opacity, duration]);
-  return <Animated.View style={{ opacity }}>{children}</Animated.View>;
-}
-
 /**
  * Занавес: canvas-зерно из пяти слоёв точек (параллакс), поверх — кнопка показа.
  * Закрывается плавно: `closing` запускает растворение, по завершении — `onClosed`.
@@ -327,6 +318,10 @@ function NoiseVeil({
     canvas.style.inset = '0';
     canvas.style.width = '100%';
     canvas.style.height = '100%';
+    // Зерно растворяется к краям блока, без явной границы карточки.
+    const fade = 'radial-gradient(ellipse at center, #000 55%, transparent 98%)';
+    canvas.style.setProperty('-webkit-mask-image', fade);
+    canvas.style.setProperty('mask-image', fade);
     host.appendChild(canvas);
     const ctx = canvas.getContext('2d');
     if (!ctx) {
@@ -389,7 +384,7 @@ function NoiseVeil({
   }, []);
 
   return (
-    <Animated.View style={[u.card, s.veil, { opacity }]}>
+    <Animated.View style={[s.veil, { opacity }]}>
       <View style={s.noiseWrap}>
         <View nativeID="momo-noise-host" style={s.noiseHost} />
       </View>
@@ -410,6 +405,8 @@ function NoiseVeil({
 /** Вложение рядом со своими данными: бейдж, имя, размер и «Скачать» в одной карточке. */
 function FileCard({ file }: { file: FilePayload }) {
   const size = Math.round((file.data.length * 3) / 4);
+  // Нейтральная галка после действия: файл мог уйти в share sheet, вкладку или загрузку.
+  const [done, setDone] = useState(false);
   return (
     <View style={[u.card, s.fileCard]}>
       <FileBadge name={file.name} />
@@ -420,7 +417,10 @@ function FileCard({ file }: { file: FilePayload }) {
         <Text style={u.fileSize}>{formatBytes(size)}</Text>
       </View>
       <Pressable
+        style={pressed()}
         onPress={async () => {
+          setDone(true);
+          setTimeout(() => setDone(false), 1500);
           const blob = new Blob([asBufferSource(bytesFromBase64(file.data))], {
             type: file.mime || 'application/octet-stream',
           });
@@ -448,7 +448,7 @@ function FileCard({ file }: { file: FilePayload }) {
           setTimeout(() => URL.revokeObjectURL(url), 5000);
         }}
       >
-        <Text style={u.link}>Скачать</Text>
+        <Text style={u.link}>{done ? '✓' : 'Скачать'}</Text>
       </Pressable>
     </View>
   );
@@ -484,7 +484,6 @@ const s = StyleSheet.create({
     marginTop: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
   noiseWrap: {
     position: 'absolute',
